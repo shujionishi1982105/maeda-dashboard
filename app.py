@@ -133,12 +133,13 @@ st.markdown("""
 def get_clean_df(year_str):
     files = glob.glob(f"*{year_str}*レセプト*.csv")
     if not files: return None
-    # 修正: cp932（日本の標準）を最優先で試すように順番を変更
-    for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+    # 修正：すべての文字コードを試し、正しく「月」列が読めたものだけを採用する絶対安全な仕組み
+    for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
         try:
             df = pd.read_csv(files[0], encoding=enc)
-            df.columns = [re.sub(r'\s*[\(（].*?[\)）]', '', c).strip() for c in df.columns]
-            return df
+            df.columns = [re.sub(r'\s*[\(（].*?[\)）]', '', str(c)).strip() for c in df.columns]
+            if '月' in df.columns:
+                return df
         except: continue
     return None
 
@@ -190,14 +191,13 @@ def get_act_summary_for_ai(y_str, m_str):
         match = re.search(r'(?:R|令和)?0*(\d+)年0*(\d+)月', f_norm)
         if match:
             if int(match.group(1)) == target_y and int(match.group(2)) == target_m:
-                # 修正: cp932を最優先
-                for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+                for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                     try:
                         df_act = pd.read_csv(f, encoding=enc)
                         col_name = None
                         if '診 療 行 為 名 称' in df_act.columns: col_name = '診 療 行 為 名 称'
                         elif '診療行為名称' in df_act.columns: col_name = '診療行為名称'
-                        if not col_name: continue
+                        if not col_name: continue # 正しく列名が読めなければ次の文字コードへ
                             
                         df_act = df_act.dropna(subset=[col_name])
                         df_act = df_act[~df_act[col_name].astype(str).str.contains('合計')]
@@ -364,13 +364,11 @@ if analysis_mode == "レセプト分析":
                     trend_color = "#E74C3C" if diff_price < 0 else "#2E86C1"
                     reason = "減少" if diff_price < 0 else "増加"
                     
-                    # 1. 診療行為データ（詳細）の取得と差分計算
                     df_a_curr = get_act_summary_for_ai(selected_year, latest_month)
                     prev_y_str_act = f"R{int(re.search(r'\d+', selected_year).group()) - 1}年" if latest_m_num == 1 else selected_year
                     df_a_prev = get_act_summary_for_ai(prev_y_str_act, prev_month)
                     
                     if df_a_curr.empty or df_a_prev.empty:
-                        # 詳細データがない場合のフォールバック（レセプトの大項目で分析）
                         exclude_cols = ["月", "総", "前年", "比", "枚数", "件数", "日数", "レセ単価", "日当点", "平均", "合計", "レセ単価_num"]
                         comp_cols = [c for c in df_now_full.columns if not any(k in c for k in exclude_cols)]
                         diffs = []
@@ -407,7 +405,6 @@ if analysis_mode == "レセプト分析":
                                     details += f"<li style='margin-bottom:3px;'>・<b>{row['名称']}</b> <span style='font-size:0.9em; color:#555;'>(全体で {sign_p}{row['点数差']:,.0f}点)</span></li>"
                             ai_comment_html = "<p style='margin-bottom:8px;'>" + f"【{latest_month}】のレセ単価は前月({prev_month})と比較して <b style='color:{trend_color};'>{abs(diff_price):,.0f} 点 {trend}</b> しています。" + "</p>" + f"<p style='font-size:0.95em; margin-bottom:5px;'>レセプトデータを分析した結果、主に以下の項目の<b>{reason}</b>が影響していると考えられます。</p>" + "<ul style='line-height:1.4; padding-left:10px; list-style-type:none;'>" + f"{details}" + "</ul>"
                     else:
-                        # 2. 詳細な「診療行為一覧」を用いて、カテゴリー付きでレポートを生成
                         df_diff = pd.merge(df_a_curr, df_a_prev, on=['区分', '名称'], how='outer', suffixes=('_curr', '_prev')).fillna(0)
                         df_diff['点数差'] = df_diff['総点数_curr'] - df_diff['総点数_prev']
                         
@@ -418,9 +415,8 @@ if analysis_mode == "レセプト分析":
                             if row['点数差'] != 0:
                                 sign_p = "+" if row['点数差'] > 0 else ""
                                 
-                                # カテゴリー（区分）のクリーニングとマッピング
                                 cat_raw = str(row['区分'])
-                                cat_clean = re.sub(r'^\d+\s*', '', cat_raw) # 先頭の数字を削除
+                                cat_clean = re.sub(r'^\d+\s*', '', cat_raw)
                                 item_name = str(row['名称'])
                                 
                                 if '小児科外来' in item_name or '指導' in cat_clean or '管理' in cat_clean: cat_clean = '管理'
@@ -544,10 +540,11 @@ elif analysis_mode == "外来収入金額推移分析":
         if match:
             year_str = match.group(1) + "年"
             month_str = match.group(2) + "月"
-            # 修正: cp932を最優先
-            for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+            for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                 try:
                     df_m = pd.read_csv(f, encoding=enc)
+                    if '日' not in df_m.columns:
+                        continue # 列名が正しく読めなければ次へ
                     df_m = df_m[df_m['日'].str.contains('日', na=False)]
                     for col in df_m.columns:
                         if col != '日':
@@ -669,10 +666,11 @@ elif analysis_mode == "受付患者数（初再診別）推移分析":
             year_str = match.group(1)
             month_str = match.group(2)
             
-            # 修正: cp932を最優先
-            for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+            for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                 try:
                     df_p = pd.read_csv(f, encoding=enc)
+                    if '日' not in df_p.columns:
+                        continue # 列名が正しく読めなければ次へ
                     df_p = df_p[df_p['日'].str.contains('日', na=False)].copy()
                     
                     df_p['フル日付'] = f"{year_str}年{month_str}月" + df_p['日']
@@ -820,10 +818,11 @@ elif analysis_mode == "年齢別構成比分析":
         if match:
             year_str = match.group(1) + "年"
             month_str = match.group(2) + "月"
-            # 修正: cp932を最優先
-            for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+            for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                 try:
                     df_a = pd.read_csv(f, encoding=enc)
+                    if '日' not in df_a.columns:
+                        continue # 列名が正しく読めなければ次へ
                     df_a = df_a[df_a['日'].str.contains('日', na=False)]
                     for col in df_a.columns:
                         if col != '日':
@@ -997,8 +996,7 @@ elif analysis_mode == "診療行為一覧分析":
         if match:
             year_str = match.group(1) + "年"
             month_str = match.group(2) + "月"
-            # 修正: cp932を最優先
-            for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+            for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                 try:
                     df_act = pd.read_csv(f, encoding=enc)
                     
@@ -1009,7 +1007,7 @@ elif analysis_mode == "診療行為一覧分析":
                         col_name = '診療行為名称'
                     
                     if not col_name:
-                        continue
+                        continue # 列名が正しく読めなければ次へ
                         
                     df_act = df_act.dropna(subset=[col_name])
                     df_act = df_act[~df_act[col_name].astype(str).str.contains('合計')]
@@ -1193,8 +1191,7 @@ elif analysis_mode == "検査一覧分析":
         if match:
             year_str = match.group(1) + "年"
             month_str = match.group(2) + "月"
-            # 修正: cp932を最優先
-            for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+            for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                 try:
                     df_act = pd.read_csv(f, encoding=enc)
                     
@@ -1205,7 +1202,7 @@ elif analysis_mode == "検査一覧分析":
                         col_name = '診療行為名称'
                     
                     if not col_name:
-                        continue
+                        continue # 列名が正しく読めなければ次へ
                         
                     df_act = df_act.dropna(subset=[col_name])
                     df_act = df_act[~df_act[col_name].astype(str).str.contains('合計')]
@@ -1580,10 +1577,10 @@ elif analysis_mode == "AI総合経営アドバイス":
                 f_norm = unicodedata.normalize('NFKC', f)
                 match = re.search(r'(?:R|令和)?0*(\d+)年0*(\d+)月', f_norm)
                 if match and int(match.group(1)) == target_y_num and int(match.group(2)) == target_m_num:
-                    # 修正: cp932を最優先
-                    for enc in ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8']:
+                    for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                         try:
                             df_age = pd.read_csv(f, encoding=enc)
+                            if '日' not in df_age.columns: continue # 列確認
                             df_age = df_age[df_age['日'].str.contains('日', na=False)]
                             for col in df_age.columns:
                                 if col != '日':
