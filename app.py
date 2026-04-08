@@ -12,6 +12,34 @@ st.cache_data.clear()
 
 st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="wide")
 
+# ==========================================
+# 🔒 ログイン機能の設定
+# ==========================================
+# ここでお好きなIDとパスワードに変更できます
+USER_ID = "admin"
+PASSWORD = "maeda2026"
+
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.markdown("<h2 style='text-align: center; margin-top: 10vh; color: #2C3E50;'>🔒 ダッシュボード ログイン</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        with st.form("login_form"):
+            user_id = st.text_input("ユーザーID")
+            password = st.text_input("パスワード", type="password")
+            submit = st.form_submit_button("ログイン", use_container_width=True)
+            
+            if submit:
+                if user_id == USER_ID and password == PASSWORD:
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("⚠️ IDまたはパスワードが間違っています。")
+    st.stop() # ログイン成功するまで、これより下のプログラムは実行しません
+
+
 # --- 共通CSS設定 ---
 st.markdown("""
     <style>
@@ -133,12 +161,19 @@ st.markdown("""
 def get_clean_df(year_str):
     files = glob.glob(f"*{year_str}*レセプト*.csv")
     if not files: return None
-    # 修正：すべての文字コードを試し、正しく「月」列が読めたものだけを採用する絶対安全な仕組み
     for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
         try:
             df = pd.read_csv(files[0], encoding=enc)
             df.columns = [re.sub(r'\s*[\(（].*?[\)）]', '', str(c)).strip() for c in df.columns]
             if '月' in df.columns:
+                df['月'] = df['月'].astype(str).str.strip()
+                # 修正：カンマなどを除去してすべてのデータを確実に「数値」として読み込む
+                for col in df.columns:
+                    if col != '月':
+                        if df[col].dtype == 'object':
+                            df[col] = pd.to_numeric(df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
+                        else:
+                            df[col] = df[col].fillna(0)
                 return df
         except: continue
     return None
@@ -197,7 +232,7 @@ def get_act_summary_for_ai(y_str, m_str):
                         col_name = None
                         if '診 療 行 為 名 称' in df_act.columns: col_name = '診 療 行 為 名 称'
                         elif '診療行為名称' in df_act.columns: col_name = '診療行為名称'
-                        if not col_name: continue # 正しく列名が読めなければ次の文字コードへ
+                        if not col_name: continue 
                             
                         df_act = df_act.dropna(subset=[col_name])
                         df_act = df_act[~df_act[col_name].astype(str).str.contains('合計')]
@@ -230,7 +265,7 @@ except NameError:
 logo_path_png = os.path.join(base_dir, "logo.png")
 logo_path_jpg = os.path.join(base_dir, "logo.jpg")
 
-header_cols = st.columns([1, 15])
+header_cols = st.columns([1, 15, 2])
 with header_cols[0]:
     if os.path.exists(logo_path_png):
         st.image(logo_path_png, use_container_width=True)
@@ -243,6 +278,12 @@ with header_cols[0]:
 
 with header_cols[1]:
     st.markdown(f'<h1 class="header-title">まえだ耳鼻咽喉科 経営分析ダッシュボード</h1>', unsafe_allow_html=True)
+
+with header_cols[2]:
+    st.write("<br>", unsafe_allow_html=True)
+    if st.button("🚪 ログアウト", use_container_width=True):
+        st.session_state.logged_in = False
+        st.rerun()
 
 # ==========================================
 # ナビゲーションメニュー
@@ -544,7 +585,7 @@ elif analysis_mode == "外来収入金額推移分析":
                 try:
                     df_m = pd.read_csv(f, encoding=enc)
                     if '日' not in df_m.columns:
-                        continue # 列名が正しく読めなければ次へ
+                        continue 
                     df_m = df_m[df_m['日'].str.contains('日', na=False)]
                     for col in df_m.columns:
                         if col != '日':
@@ -670,7 +711,7 @@ elif analysis_mode == "受付患者数（初再診別）推移分析":
                 try:
                     df_p = pd.read_csv(f, encoding=enc)
                     if '日' not in df_p.columns:
-                        continue # 列名が正しく読めなければ次へ
+                        continue 
                     df_p = df_p[df_p['日'].str.contains('日', na=False)].copy()
                     
                     df_p['フル日付'] = f"{year_str}年{month_str}月" + df_p['日']
@@ -822,7 +863,7 @@ elif analysis_mode == "年齢別構成比分析":
                 try:
                     df_a = pd.read_csv(f, encoding=enc)
                     if '日' not in df_a.columns:
-                        continue # 列名が正しく読めなければ次へ
+                        continue 
                     df_a = df_a[df_a['日'].str.contains('日', na=False)]
                     for col in df_a.columns:
                         if col != '日':
@@ -1007,7 +1048,7 @@ elif analysis_mode == "診療行為一覧分析":
                         col_name = '診療行為名称'
                     
                     if not col_name:
-                        continue # 列名が正しく読めなければ次へ
+                        continue 
                         
                     df_act = df_act.dropna(subset=[col_name])
                     df_act = df_act[~df_act[col_name].astype(str).str.contains('合計')]
@@ -1202,7 +1243,7 @@ elif analysis_mode == "検査一覧分析":
                         col_name = '診療行為名称'
                     
                     if not col_name:
-                        continue # 列名が正しく読めなければ次へ
+                        continue 
                         
                     df_act = df_act.dropna(subset=[col_name])
                     df_act = df_act[~df_act[col_name].astype(str).str.contains('合計')]
@@ -1580,7 +1621,7 @@ elif analysis_mode == "AI総合経営アドバイス":
                     for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
                         try:
                             df_age = pd.read_csv(f, encoding=enc)
-                            if '日' not in df_age.columns: continue # 列確認
+                            if '日' not in df_age.columns: continue 
                             df_age = df_age[df_age['日'].str.contains('日', na=False)]
                             for col in df_age.columns:
                                 if col != '日':
