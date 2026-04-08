@@ -228,7 +228,7 @@ def get_act_summary_for_ai(y_str, m_str):
                     try:
                         df_act = pd.read_csv(f, encoding=enc)
                         col_name = None
-                        if '診 療 行 為 名 称' in df_act.columns: col_name = '診 療 行 行 名 称'
+                        if '診 療 行 為 名 称' in df_act.columns: col_name = '診 療 行 為 名 称'
                         elif '診療行為名称' in df_act.columns: col_name = '診療行為名称'
                         if not col_name: continue 
                             
@@ -1515,7 +1515,7 @@ elif analysis_mode == "検査一覧分析":
     st.dataframe(style_full_matrix(matrix_full_df), use_container_width=True)
 
 # ==========================================
-# G. AI総合経営アドバイス (完全動的データ生成版)
+# G. AI総合経営アドバイス (トレンド反映・Bルート攻略版)
 # ==========================================
 elif analysis_mode == "AI総合経営アドバイス":
     st.subheader("🤖 AI総合経営アドバイス（目標：レセプト単価750点達成に向けて）")
@@ -1539,7 +1539,6 @@ elif analysis_mode == "AI総合経営アドバイス":
         is_fallback_ai = False
         gap_ai = 0
         
-        # 課題抽出用
         worst_item = "不明"
         worst_diff = 0
 
@@ -1591,7 +1590,7 @@ elif analysis_mode == "AI総合経営アドバイス":
                                 worst_item = worst_row['名称']
                                 worst_diff = worst_row['点数差']
 
-        # --- 3. 診療行為データから実施率を取得 ---
+        # --- 2. 診療行為データから実施率を取得 ---
         df_a_curr = get_act_summary_for_ai(latest_year_str, latest_m_ai)
         fiber_cnt = 0
         audio_cnt = 0
@@ -1604,7 +1603,7 @@ elif analysis_mode == "AI総合経営アドバイス":
         fiber_rate = (fiber_cnt / rece_patients * 100) if rece_patients > 0 else 0
         tympa_rate = (tympa_cnt / rece_patients * 100) if rece_patients > 0 else 0
 
-        # --- 4. 年齢構成データの取得 ---
+        # --- 3. 年齢構成データの取得 ---
         kids_cnt = 0
         total_age_cnt = 0
         try:
@@ -1635,7 +1634,7 @@ elif analysis_mode == "AI総合経営アドバイス":
             
         kids_ratio = (kids_cnt / total_age_cnt * 100) if total_age_cnt > 0 else 0
 
-        # --- 5. シミュレーション計算 ---
+        # --- 4. シミュレーション計算 ---
         if gap_ai > 0 and rece_patients > 0:
             required_points_total = gap_ai * rece_patients
             add_fiber_cnt = required_points_total / 600
@@ -1643,16 +1642,66 @@ elif analysis_mode == "AI総合経営アドバイス":
             
             add_tympa_cnt = required_points_total / 340
             new_tympa_rate = ((tympa_cnt + add_tympa_cnt) / rece_patients * 100)
-            
-            req_audio = required_points_total / 350
         else:
             required_points_total = 0
             add_fiber_cnt = 0
             new_fiber_rate = 0
             add_tympa_cnt = 0
             new_tympa_rate = 0
-            req_audio = 0
 
+        # --- 5. ニュース記事の取得と【トレンド分析エンジン】 ---
+        SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
+        parsed_articles = []
+        trend_infection = False
+        trend_revision = False
+        trend_dx = False
+        
+        try:
+            df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
+            seen_titles = set()
+            
+            for idx, row in df_news.iterrows():
+                try:
+                    raw_date = str(row.iloc[0]).strip()
+                    if raw_date == "nan" or not raw_date: continue
+                    date_str = raw_date[:10].replace('/', '-') 
+                    
+                    source = str(row.iloc[1]).strip()
+                    if source == "nan": source = ""
+                    
+                    content = str(row.iloc[3]).strip() if len(row) > 3 else ""
+                    if content == "nan": content = ""
+                    
+                    url_match = re.search(r'(https?://\S+)', content)
+                    url = url_match.group(1) if url_match else ""
+                    title = content.replace(url, "").strip() if url else content
+                    
+                    if not title: continue
+                        
+                    if title not in seen_titles:
+                        seen_titles.add(title)
+                        parsed_articles.append({
+                            "date": date_str,
+                            "source": source,
+                            "title": title,
+                            "url": url,
+                            "raw": f"{date_str} {source} {content}" 
+                        })
+                except:
+                    continue
+            parsed_articles.reverse() # 最新順に
+            
+            # 【トレンド分析】最新10件のニュースから世の中の動きを判定
+            if parsed_articles:
+                recent_text = " ".join([a['raw'] for a in parsed_articles[:10]])
+                trend_infection = any(k in recent_text for k in ["感染症", "コロナ", "インフル", "RS", "流行"])
+                trend_revision = any(k in recent_text for k in ["改定", "診療報酬", "施設基準", "算定"])
+                trend_dx = any(k in recent_text for k in ["DX", "マイナ", "デジタル", "オンライン"])
+
+        except Exception as e:
+            pass
+
+    # 画面描画開始
     st.write("<br>", unsafe_allow_html=True)
     
     if gap_ai > 0:
@@ -1669,125 +1718,75 @@ elif analysis_mode == "AI総合経営アドバイス":
     top_block = "<div style='background-color: #F8F9F9; padding: 20px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'>" + f"{fallback_html}" + "<h3 style='color: #2C3E50; margin-top: 0; margin-bottom: 10px;'>📊 現在地と目標のギャップ確認</h3>" + "<p style='font-size: 1.1rem; line-height: 1.6; margin-bottom:0;'>" + "<span style='background-color:#EBF5FB; padding:2px 6px; border-radius:4px; font-size:0.85em; color:#2E86C1;'>ℹ️ レセプトデータと同期した確定月を表示</span><br>" + f"最新実績（{latest_year_str} {latest_m_ai}）におけるレセプト単価は <b>{rece_tanka:,.0f} 点</b> です。<br>" + f"今年の目標である <b>750点</b> に対して、現在 <b style='color: {status_color}; font-size: 1.3rem;'>{status_text}</b>。" + "</p></div>"
     st.markdown(top_block, unsafe_allow_html=True)
 
-    # ==========================================
-    # 📰 医療トレンド記事（重複排除・自動判別・3件表示 ＋ 過去記事検索）
-    # ==========================================
     st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
-    SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
-    
-    try:
-        df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
-        parsed_articles = []
-        seen_titles = set() # 重複チェック用のセット
+    if parsed_articles:
+        news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+        for article in parsed_articles[:3]:
+            date_badge = f"［{article['date']}］" if article['date'] else ""
+            source_badge = f"{article['source']}　" if article['source'] else ""
+            if article['url']:
+                news_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
+            else:
+                news_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
+        news_html += "</ul></div>"
+        st.markdown(news_html, unsafe_allow_html=True)
         
-        for idx, row in df_news.iterrows():
-            try:
-                # A列(0): 日付
-                raw_date = str(row.iloc[0]).strip()
-                if raw_date == "nan" or not raw_date: continue
-                date_str = raw_date[:10].replace('/', '-') 
-                
-                # B列(1): 情報元
-                source = str(row.iloc[1]).strip()
-                if source == "nan": source = ""
-                
-                # D列(3): ニュース内容（タイトル＋URL）
-                content = str(row.iloc[3]).strip() if len(row) > 3 else ""
-                if content == "nan": content = ""
-                
-                # URLを抽出してタイトルと分離
-                url_match = re.search(r'(https?://\S+)', content)
-                url = url_match.group(1) if url_match else ""
-                title = content.replace(url, "").strip() if url else content
-                
-                if not title:
-                    continue
-                    
-                # 重複チェック: 上から順番に読み込み、まだ見たことのないタイトルだけを追加
-                # （＝同じタイトルの場合、一番情報が早かったものが残る）
-                if title not in seen_titles:
-                    seen_titles.add(title)
-                    parsed_articles.append({
-                        "date": date_str,
-                        "source": source,
-                        "title": title,
-                        "url": url,
-                        "raw": f"{date_str} {source} {content}" 
-                    })
-            except:
-                continue
-                
-        # 最新（下にあるデータ）を上にするため反転
-        parsed_articles.reverse()
-
-        if parsed_articles:
-            # --- 最新3件の表示 ---
-            news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
-            for article in parsed_articles[:3]:
-                date_badge = f"［{article['date']}］" if article['date'] else ""
-                source_badge = f"{article['source']}　" if article['source'] else ""
-                if article['url']:
-                    news_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
-                else:
-                    news_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
-            news_html += "</ul></div>"
-            st.markdown(news_html, unsafe_allow_html=True)
+        with st.expander("📂 過去の全記事を検索・閲覧する"):
+            search_query = st.text_input("🔍 キーワードを入力して過去記事を検索", placeholder="例：診療報酬、感染症...")
             
-            # --- 過去記事の検索・閲覧エクスパンダー ---
-            with st.expander("📂 過去の全記事を検索・閲覧する"):
-                search_query = st.text_input("🔍 キーワードを入力して過去記事を検索", placeholder="例：診療報酬、感染症...")
-                
+            if search_query:
+                filtered_articles = [a for a in parsed_articles if search_query.lower() in a['raw'].lower()]
+            else:
+                filtered_articles = parsed_articles
+            
+            if filtered_articles:
                 if search_query:
-                    filtered_articles = [a for a in parsed_articles if search_query.lower() in a['raw'].lower()]
-                else:
-                    filtered_articles = parsed_articles
-                
-                if filtered_articles:
-                    if search_query:
-                        st.success(f"検索結果: {len(filtered_articles)} 件ヒットしました")
-                        
-                    expander_html = "<div style='max-height: 300px; overflow-y: auto; padding-right: 10px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
-                    for article in filtered_articles:
-                        date_badge = f"［{article['date']}］" if article['date'] else ""
-                        source_badge = f"{article['source']}　" if article['source'] else ""
-                        if article['url']:
-                            expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
-                        else:
-                            expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
-                    expander_html += "</ul></div>"
-                    st.markdown(expander_html, unsafe_allow_html=True)
-                else:
-                    st.info("キーワードに一致する記事は見つかりませんでした。")
-        else:
-            st.info("現在、表示できる新しい記事はありません。")
-    except Exception as e:
-        st.error("⚠️ 記事データの読み込みに失敗しました。スプレッドシートの共有設定を確認してください。")
+                    st.success(f"検索結果: {len(filtered_articles)} 件ヒットしました")
+                    
+                expander_html = "<div style='max-height: 300px; overflow-y: auto; padding-right: 10px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+                for article in filtered_articles:
+                    date_badge = f"［{article['date']}］" if article['date'] else ""
+                    source_badge = f"{article['source']}　" if article['source'] else ""
+                    if article['url']:
+                        expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
+                    else:
+                        expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
+                expander_html += "</ul></div>"
+                st.markdown(expander_html, unsafe_allow_html=True)
+            else:
+                st.info("キーワードに一致する記事は見つかりませんでした。")
+    else:
+        st.info("現在、表示できる新しい記事はありません。")
 
-    # ==========================================
-    # 💡 キードライバー＆シミュレーション
-    # ==========================================
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        st.markdown("<div style='height: 60px; display: flex; align-items: flex-end; margin-bottom: 15px;'><h4 style='margin: 0; padding: 0; color: #31333F; font-size: 1.25rem;'>💡 達成に向けたキードライバー<br><span style='font-size: 1rem; font-weight: normal; color: #555;'>（AIが抽出した現状の課題と対策）</span></h4></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 60px; display: flex; align-items: flex-end; margin-bottom: 15px;'><h4 style='margin: 0; padding: 0; color: #31333F; font-size: 1.25rem;'>💡 達成に向けたキードライバー<br><span style='font-size: 1rem; font-weight: normal; color: #555;'>（トレンドと現状の掛け合わせ）</span></h4></div>", unsafe_allow_html=True)
     with col_h2:
         st.markdown("<div style='height: 60px; display: flex; align-items: flex-end; margin-bottom: 15px;'><h4 style='margin: 0; padding: 0; color: #31333F; font-size: 1.25rem;'>📈 シミュレーション<br><span style='font-size: 1rem; font-weight: normal; color: #555;'>（あとどれくらい必要か？）</span></h4></div>", unsafe_allow_html=True)
         
     col_c1, col_c2 = st.columns(2)
     with col_c1:
         issue_text = ""
+        # 内部環境からの課題
         if kids_ratio > 0:
             issue_text += f"<li><b>小児層の集患基盤：</b> 現在、患者全体の<b>約{kids_ratio:.1f}%</b>が12歳以下の小児層です。ファミリー層からの強い支持を活かしたアプローチが有効です。</li>"
-            
         if worst_diff < 0:
-            issue_text += f"<li style='margin-top:10px;'><b>「{worst_item}」項目の下落：</b> レセプトデータ分析の結果、前月比で「{worst_item}」が全体で<b>{abs(worst_diff):,.0f}点低下</b>し、単価の足を引っ張っています。算定漏れがないかレセコンの入力確認が必要です。</li>"
-            
+            issue_text += f"<li style='margin-top:10px;'><b>「{worst_item}」項目の下落：</b> 前月比で「{worst_item}」が全体で<b>{abs(worst_diff):,.0f}点低下</b>しています。算定漏れがないかレセコンの入力確認が必要です。</li>"
         if tympa_rate > 0 and tympa_rate < 20 and kids_ratio > 20:
-            issue_text += f"<li style='margin-top:10px;'><b>小児割合に対する検査の少なさ：</b> 小児が多いにも関わらず、チンパノメトリーの実施率が <b>{tympa_rate:.1f}%</b> に留まっています。中耳炎の客観的評価の機会を損失している可能性があります。</li>"
+            issue_text += f"<li style='margin-top:10px;'><b>小児割合に対する検査の少なさ：</b> チンパノメトリーの実施率が <b>{tympa_rate:.1f}%</b> に留まっています。中耳炎の客観的評価の機会損失にご注意ください。</li>"
+            
+        # 外部トレンド（ニュース）からの課題反映
+        if trend_infection:
+            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 感染症動向】</b> 直近のニュースで感染症の動向が報じられています。当院の小児割合（約{kids_ratio:.1f}%）を考慮し、迅速検査キットの適正な在庫確保や、発熱患者の導線見直しを推奨します。</li>"
+        if trend_revision:
+            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 制度・報酬改定】</b> 診療報酬等に関する最新情報が発信されています。特に低下している「{worst_item}」について、算定要件に変更がないか確認を推奨します。</li>"
+        if trend_dx:
+            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 医療DX推進】</b> 医療DXに関するニュースが注目されています。来院患者（約{rece_patients:,.0f}人/月）に対する受付スタッフの負担軽減のため、WEB問診やシステム案内の強化が有効です。</li>"
             
         if not issue_text:
             issue_text = "<li>目立ったマイナス要因は見当たらず、全体的に安定した推移を見せています。</li>"
             
-        adv_block = "<div class='target-box' style='height: 100%;'>" + "<ul style='font-size: 1.05rem; line-height: 1.6; padding-left: 20px;'>" + f"{issue_text}" + "</ul>" + "<hr style='border-top: 1px dashed #AED6F1;'>" + "<b>【AIからの推奨アクション】</b><br>" + "小児の鼻症状・耳症状受付時に、スタッフ主導でチンパノメトリーやファイバー検査へ誘導する<b>「セット実施フロー」</b>を構築し、医師の負担を減らしつつ算定漏れを防ぎましょう。" + "</div>"
+        adv_block = "<div class='target-box' style='height: 100%;'>" + "<ul style='font-size: 1.05rem; line-height: 1.6; padding-left: 20px;'>" + f"{issue_text}" + "</ul>" + "</div>"
         st.markdown(adv_block, unsafe_allow_html=True)
 
     with col_c2:
@@ -1803,5 +1802,24 @@ elif analysis_mode == "AI総合経営アドバイス":
                 st.markdown(err_block, unsafe_allow_html=True)
         
     st.write("---")
-    st.markdown("#### 🤖 AIからの総評")
-    st.markdown("まえだ耳鼻咽喉科の最大の強みは、**明確なターゲット基盤（小児・ファミリー層）**がすでに構築されている点にあります。無理に新しい患者層を開拓するよりも、**「今来院されている患者様に対して、必要な検査や治療の選択肢を漏れなく提案し、医療の質を深めること」**が、目標単価750点達成の最短ルートです。明日から、**「今日はファイバーをあと○件実施しよう」**という具体的な1日の目標件数をスタッフ全員で共有し、朝礼などで意識づけを行うことをお勧めします。")
+    st.markdown("#### 🤖 AIからの総評とネクストアクション")
+    
+    general_comment = f"まえだ耳鼻咽喉科の最大の強みは、**明確なターゲット基盤（小児・ファミリー層が約{kids_ratio:.1f}%）**がすでに構築されている点にあります。無理に新しい患者層を開拓するよりも、**「今来院されている患者様に対して、必要な検査や治療の選択肢を漏れなく提案し、医療の質を深めること」**が、目標単価750点達成の最短ルートです。"
+    
+    if trend_infection:
+        general_comment += "また、直近のニューストレンドから感染症への関心が高まっています。ファミリー層への安心感を提供するため、院内の感染対策の周知や、必要に応じた迅速検査の提案を積極的に行いましょう。"
+    elif trend_revision:
+        general_comment += "現在、医療制度や診療報酬に関するニュースが多く発信されています。算定要件の変更に伴う「取りこぼし」を防ぐため、事務長主導でスタッフと最新情報を共有する場を設けることが急務です。"
+    elif trend_dx:
+        general_comment += "ニューストレンドとして医療DXが加速しています。患者数の多さを捌くためにも、マイナ受付やWEB予約への誘導を強め、スタッフが「患者様への検査提案（ファイバー等）」など付加価値の高い業務に集中できる環境を作りましょう。"
+
+    target_exam = "チンパノメトリー" if tympa_rate < 20 else "ファイバー"
+    target_count = int(add_tympa_cnt/20) if tympa_rate < 20 else int(add_fiber_cnt/20)
+    target_count = target_count if target_count > 0 else 1
+    
+    if gap_ai > 0:
+        general_comment += f"<br><br>明日から、**「今日は不足している{target_exam}をあと{target_count}件実施しよう」**という具体的な1日の目標件数をスタッフ全員で共有し、朝礼などで意識づけを行うことをお勧めします。"
+    else:
+        general_comment += "<br><br>すでに目標単価は達成水準にあります。今後はスタッフの業務負担軽減や、自費診療（ワクチン等）へのご案内など、新たな収益の柱を作る取り組みにシフトしていきましょう。"
+
+    st.markdown(general_comment, unsafe_allow_html=True)
