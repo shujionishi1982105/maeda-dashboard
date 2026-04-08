@@ -228,7 +228,7 @@ def get_act_summary_for_ai(y_str, m_str):
                     try:
                         df_act = pd.read_csv(f, encoding=enc)
                         col_name = None
-                        if '診 療 行 為 名 称' in df_act.columns: col_name = '診 療 行 為 名 称'
+                        if '診 療 行 為 名 称' in df_act.columns: col_name = '診 療 行 行 名 称'
                         elif '診療行為名称' in df_act.columns: col_name = '診療行為名称'
                         if not col_name: continue 
                             
@@ -1670,7 +1670,7 @@ elif analysis_mode == "AI総合経営アドバイス":
     st.markdown(top_block, unsafe_allow_html=True)
 
     # ==========================================
-    # 📰 医療トレンド記事（指定のレイアウトと完全マッピング版）
+    # 📰 医療トレンド記事（重複排除・自動判別・3件表示 ＋ 過去記事検索）
     # ==========================================
     st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
     SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
@@ -1678,6 +1678,7 @@ elif analysis_mode == "AI総合経営アドバイス":
     try:
         df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
         parsed_articles = []
+        seen_titles = set() # 重複チェック用のセット
         
         for idx, row in df_news.iterrows():
             try:
@@ -1699,17 +1700,24 @@ elif analysis_mode == "AI総合経営アドバイス":
                 url = url_match.group(1) if url_match else ""
                 title = content.replace(url, "").strip() if url else content
                 
-                parsed_articles.append({
-                    "date": date_str,
-                    "source": source,
-                    "title": title,
-                    "url": url,
-                    "raw": f"{date_str} {source} {content}" 
-                })
+                if not title:
+                    continue
+                    
+                # 重複チェック: 上から順番に読み込み、まだ見たことのないタイトルだけを追加
+                # （＝同じタイトルの場合、一番情報が早かったものが残る）
+                if title not in seen_titles:
+                    seen_titles.add(title)
+                    parsed_articles.append({
+                        "date": date_str,
+                        "source": source,
+                        "title": title,
+                        "url": url,
+                        "raw": f"{date_str} {source} {content}" 
+                    })
             except:
                 continue
                 
-        # 新しい記事を上にするため反転
+        # 最新（下にあるデータ）を上にするため反転
         parsed_articles.reverse()
 
         if parsed_articles:
@@ -1738,7 +1746,6 @@ elif analysis_mode == "AI総合経営アドバイス":
                     if search_query:
                         st.success(f"検索結果: {len(filtered_articles)} 件ヒットしました")
                         
-                    # 枠の高さを固定し、スクロールバーを追加 (max-height: 300px; overflow-y: auto;)
                     expander_html = "<div style='max-height: 300px; overflow-y: auto; padding-right: 10px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
                     for article in filtered_articles:
                         date_badge = f"［{article['date']}］" if article['date'] else ""
