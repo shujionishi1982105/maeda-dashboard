@@ -1738,7 +1738,8 @@ elif analysis_mode == "AI総合経営アドバイス":
                     if search_query:
                         st.success(f"検索結果: {len(filtered_articles)} 件ヒットしました")
                         
-                    expander_html = "<ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+                    # 枠の高さを固定し、スクロールバーを追加 (max-height: 300px; overflow-y: auto;)
+                    expander_html = "<div style='max-height: 300px; overflow-y: auto; padding-right: 10px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
                     for article in filtered_articles:
                         date_badge = f"［{article['date']}］" if article['date'] else ""
                         source_badge = f"{article['source']}　" if article['source'] else ""
@@ -1746,7 +1747,7 @@ elif analysis_mode == "AI総合経営アドバイス":
                             expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
                         else:
                             expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
-                    expander_html += "</ul>"
+                    expander_html += "</ul></div>"
                     st.markdown(expander_html, unsafe_allow_html=True)
                 else:
                     st.info("キーワードに一致する記事は見つかりませんでした。")
