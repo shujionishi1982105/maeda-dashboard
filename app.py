@@ -16,7 +16,7 @@ st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="w
 # 🔒 ログイン機能の設定
 # ==========================================
 USER_ID = "admin"
-PASSWORD = "password"
+PASSWORD = "maeda2026"
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
