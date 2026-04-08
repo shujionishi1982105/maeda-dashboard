@@ -15,9 +15,8 @@ st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="w
 # ==========================================
 # 🔒 ログイン機能の設定
 # ==========================================
-# ここでお好きなIDとパスワードに変更できます
 USER_ID = "admin"
-PASSWORD = "maeda2026"
+PASSWORD = "password"
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -37,7 +36,7 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     st.error("⚠️ IDまたはパスワードが間違っています。")
-    st.stop() # ログイン成功するまで、これより下のプログラムは実行しません
+    st.stop()
 
 
 # --- 共通CSS設定 ---
@@ -1671,7 +1670,7 @@ elif analysis_mode == "AI総合経営アドバイス":
     st.markdown(top_block, unsafe_allow_html=True)
 
     # ==========================================
-    # 📰 医療トレンド記事（ここが指定の表示位置です）
+    # 📰 医療トレンド記事（自動判別・検索・3件表示）
     # ==========================================
     st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
     SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
@@ -1679,14 +1678,61 @@ elif analysis_mode == "AI総合経営アドバイス":
     try:
         df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
         if not df_news.empty:
-            news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px; max-height: 200px; overflow-y: auto;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
-            for idx, row in df_news.iloc[::-1].head(10).iterrows():
-                title = str(row.iloc[0])
-                url = str(row.iloc[1])
-                if title != "nan" and url != "nan":
-                    news_html += f"<li><a href='{url}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{title}</a></li>"
-            news_html += "</ul></div>"
-            st.markdown(news_html, unsafe_allow_html=True)
+            # 検索ボックスの追加
+            search_query = st.text_input("🔍 過去の記事を検索", placeholder="キーワードを入力してください...")
+            
+            # データ順を最新（下から）に並べ替え
+            df_news_sorted = df_news.iloc[::-1].copy()
+            
+            # 検索キーワードでフィルタリング
+            if search_query:
+                mask = df_news_sorted.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+                df_news_filtered = df_news_sorted[mask]
+            else:
+                df_news_filtered = df_news_sorted
+                
+            # 最大3件表示に絞る
+            df_news_display = df_news_filtered.head(3)
+
+            if not df_news_display.empty:
+                if search_query:
+                    st.success(f"検索結果: {len(df_news_filtered)} 件ヒットしました（最新の3件を表示中）")
+                    
+                news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+                
+                # 列の順番によらず「URL」と「一番長い文字列（タイトル）」を自動判定
+                for idx, row in df_news_display.iterrows():
+                    url = ""
+                    title = ""
+                    date_str = ""
+                    
+                    # 1列目を日付として扱う（Zapierの仕様対策）
+                    raw_date = str(row.iloc[0])
+                    if len(raw_date) > 5 and ("-" in raw_date or "/" in raw_date):
+                        date_str = raw_date[:10]
+                        
+                    # 行の中から http で始まるものをURLとする
+                    for val in row.values:
+                        val_str = str(val)
+                        if val_str.startswith("http"):
+                            url = val_str
+                            break
+                            
+                    # URL以外の要素で、一番長い文字列をタイトルとする
+                    other_vals = [str(v) for v in row.values if str(v) != url and str(v) != "nan" and str(v) != raw_date]
+                    if other_vals:
+                        title = max(other_vals, key=len)
+                    else:
+                        title = "記事リンク"
+                        
+                    if url:
+                        date_badge = f"<span style='color: #7F8C8D; font-size: 0.85em; margin-right: 10px;'>[{date_str}]</span>" if date_str else ""
+                        news_html += f"<li style='margin-bottom: 8px;'>{date_badge}<a href='{url}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{title}</a></li>"
+                news_html += "</ul></div>"
+                
+                st.markdown(news_html, unsafe_allow_html=True)
+            else:
+                st.info("検索キーワードに一致する記事は見つかりませんでした。")
         else:
             st.info("現在、表示できる新しい記事はありません。")
     except Exception as e:
