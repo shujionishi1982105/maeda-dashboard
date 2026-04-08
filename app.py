@@ -15,8 +15,9 @@ st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="w
 # ==========================================
 # 🔒 ログイン機能の設定
 # ==========================================
+# ここでお好きなIDとパスワードに変更できます
 USER_ID = "admin"
-PASSWORD = "maeda2026"
+PASSWORD = "password"
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -1670,73 +1671,89 @@ elif analysis_mode == "AI総合経営アドバイス":
     st.markdown(top_block, unsafe_allow_html=True)
 
     # ==========================================
-    # 📰 医療トレンド記事（自動判別・検索・3件表示）
+    # 📰 医療トレンド記事（自動判別・3件表示 ＋ 過去記事検索）
     # ==========================================
     st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
     SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
     
     try:
         df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
-        if not df_news.empty:
-            # 検索ボックスの追加
-            search_query = st.text_input("🔍 過去の記事を検索", placeholder="キーワードを入力してください...")
+        
+        # 1. データの整形（ヘッダーがデータになってしまっている場合の救済）
+        raw_data = []
+        col_strs = [str(c) for c in df_news.columns]
+        if any("http" in s for s in col_strs):
+            raw_data.append(col_strs)
+        for _, row in df_news.iterrows():
+            raw_data.append([str(v) for v in row.values])
             
-            # データ順を最新（下から）に並べ替え
-            df_news_sorted = df_news.iloc[::-1].copy()
+        # 新しい順にするため反転
+        raw_data.reverse()
+        
+        parsed_articles = []
+        for row in raw_data:
+            url = ""
+            title = ""
+            date_str = ""
             
-            # 検索キーワードでフィルタリング
-            if search_query:
-                mask = df_news_sorted.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
-                df_news_filtered = df_news_sorted[mask]
+            # URLを探す
+            for val in row:
+                if "http" in val:
+                    url = val
+                    break
+                    
+            # 日付らしきものを探す（Zapier仕様対策）
+            for val in row:
+                if val != url and len(val) > 5 and ("-" in val or "/" in val) and any(c.isdigit() for c in val):
+                    # 簡単な日付チェック（最初の10文字程度）
+                    date_str = val[:10]
+                    break
+                    
+            # 残りの文字列で一番長いものをタイトルとする
+            candidates = [v for v in row if v != url and v != date_str and v.strip() != "" and v.strip() != "nan" and "Unnamed" not in v]
+            if candidates:
+                title = max(candidates, key=len)
             else:
-                df_news_filtered = df_news_sorted
+                title = "記事リンク"
                 
-            # 最大3件表示に絞る
-            df_news_display = df_news_filtered.head(3)
+            if url:
+                parsed_articles.append({"title": title, "url": url, "date": date_str, "raw": " ".join(row)})
 
-            if not df_news_display.empty:
+        if parsed_articles:
+            # --- トップ3件の表示 ---
+            news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+            for article in parsed_articles[:3]:
+                date_badge = f"<span style='color: #7F8C8D; font-size: 0.85em; margin-right: 10px;'>[{article['date']}]</span>" if article['date'] else ""
+                news_html += f"<li style='margin-bottom: 8px;'>{date_badge}<a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{article['title']}</a></li>"
+            news_html += "</ul></div>"
+            st.markdown(news_html, unsafe_allow_html=True)
+            
+            # --- 過去記事の検索・閲覧エクスパンダー ---
+            with st.expander("📂 過去の全記事を検索・閲覧する"):
+                search_query = st.text_input("🔍 キーワードを入力して過去記事を検索", placeholder="例：診療報酬、感染症...")
+                
+                # 検索フィルタリング
                 if search_query:
-                    st.success(f"検索結果: {len(df_news_filtered)} 件ヒットしました（最新の3件を表示中）")
-                    
-                news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+                    filtered_articles = [a for a in parsed_articles if search_query.lower() in a['raw'].lower()]
+                else:
+                    filtered_articles = parsed_articles
                 
-                # 列の順番によらず「URL」と「一番長い文字列（タイトル）」を自動判定
-                for idx, row in df_news_display.iterrows():
-                    url = ""
-                    title = ""
-                    date_str = ""
-                    
-                    # 1列目を日付として扱う（Zapierの仕様対策）
-                    raw_date = str(row.iloc[0])
-                    if len(raw_date) > 5 and ("-" in raw_date or "/" in raw_date):
-                        date_str = raw_date[:10]
+                if filtered_articles:
+                    if search_query:
+                        st.success(f"検索結果: {len(filtered_articles)} 件ヒットしました")
                         
-                    # 行の中から http で始まるものをURLとする
-                    for val in row.values:
-                        val_str = str(val)
-                        if val_str.startswith("http"):
-                            url = val_str
-                            break
-                            
-                    # URL以外の要素で、一番長い文字列をタイトルとする
-                    other_vals = [str(v) for v in row.values if str(v) != url and str(v) != "nan" and str(v) != raw_date]
-                    if other_vals:
-                        title = max(other_vals, key=len)
-                    else:
-                        title = "記事リンク"
-                        
-                    if url:
-                        date_badge = f"<span style='color: #7F8C8D; font-size: 0.85em; margin-right: 10px;'>[{date_str}]</span>" if date_str else ""
-                        news_html += f"<li style='margin-bottom: 8px;'>{date_badge}<a href='{url}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{title}</a></li>"
-                news_html += "</ul></div>"
-                
-                st.markdown(news_html, unsafe_allow_html=True)
-            else:
-                st.info("検索キーワードに一致する記事は見つかりませんでした。")
+                    expander_html = "<ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+                    for article in filtered_articles:
+                        date_badge = f"<span style='color: #7F8C8D; font-size: 0.85em; margin-right: 10px;'>[{article['date']}]</span>" if article['date'] else ""
+                        expander_html += f"<li style='margin-bottom: 8px;'>{date_badge}<a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['title']}</a></li>"
+                    expander_html += "</ul>"
+                    st.markdown(expander_html, unsafe_allow_html=True)
+                else:
+                    st.info("キーワードに一致する記事は見つかりませんでした。")
         else:
             st.info("現在、表示できる新しい記事はありません。")
     except Exception as e:
-        st.error("⚠️ 記事データの読み込みに失敗しました。スプレッドシートの共有設定が「リンクを知っている全員」になっているか確認してください。")
+        st.error("⚠️ 記事データの読み込みに失敗しました。")
 
     # ==========================================
     # 💡 キードライバー＆シミュレーション
