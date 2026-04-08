@@ -1671,6 +1671,37 @@ elif analysis_mode == "AI総合経営アドバイス":
     top_block = "<div style='background-color: #F8F9F9; padding: 20px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'>" + f"{fallback_html}" + "<h3 style='color: #2C3E50; margin-top: 0; margin-bottom: 10px;'>📊 現在地と目標のギャップ確認</h3>" + "<p style='font-size: 1.1rem; line-height: 1.6; margin-bottom:0;'>" + "<span style='background-color:#EBF5FB; padding:2px 6px; border-radius:4px; font-size:0.85em; color:#2E86C1;'>ℹ️ レセプトデータと同期した確定月を表示</span><br>" + f"最新実績（{latest_year_str} {latest_m_ai}）におけるレセプト単価は <b>{rece_tanka:,.0f} 点</b> です。<br>" + f"今年の目標である <b>750点</b> に対して、現在 <b style='color: {status_color}; font-size: 1.3rem;'>{status_text}</b>。" + "</p></div>"
     st.markdown(top_block, unsafe_allow_html=True)
     
+    # ==========================================
+    # 📰 医療トレンド記事（指定の場所に移動）
+    # ==========================================
+    st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
+    
+    # ⚠️⚠️⚠️【重要】以下の "" の中身を、実際のスプレッドシートのCSV公開URLに書き換えてください！⚠️⚠️⚠️
+    SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/edit?gid=0#gid=0" 
+    
+    if SHEET_URL == "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/edit?gid=0#gid=0":
+        st.warning("⚠️ コード内の `SHEET_URL` に実際のスプレッドシートの公開URL（CSV形式）が貼り付けられていません。GitHubでコードを修正してください。")
+    else:
+        try:
+            df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
+            if not df_news.empty:
+                # 枠の中にスクロール付きで綺麗に表示
+                news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px; max-height: 200px; overflow-y: auto;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+                for idx, row in df_news.iloc[::-1].head(10).iterrows():
+                    title = str(row.iloc[0])
+                    url = str(row.iloc[1])
+                    if title != "nan" and url != "nan":
+                        news_html += f"<li><a href='{url}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{title}</a></li>"
+                news_html += "</ul></div>"
+                st.markdown(news_html, unsafe_allow_html=True)
+            else:
+                st.info("現在、表示できる新しい記事はありません。")
+        except Exception as e:
+            st.error("⚠️ 記事データの読み込みに失敗しました。URLが間違っているか、CSVとして公開されていない可能性があります。")
+
+    # ==========================================
+    # 💡 キードライバー＆シミュレーション
+    # ==========================================
     col_h1, col_h2 = st.columns(2)
     with col_h1:
         st.markdown("<div style='height: 60px; display: flex; align-items: flex-end; margin-bottom: 15px;'><h4 style='margin: 0; padding: 0; color: #31333F; font-size: 1.25rem;'>💡 達成に向けたキードライバー<br><span style='font-size: 1rem; font-weight: normal; color: #555;'>（AIが抽出した現状の課題と対策）</span></h4></div>", unsafe_allow_html=True)
@@ -1710,37 +1741,3 @@ elif analysis_mode == "AI総合経営アドバイス":
     st.write("---")
     st.markdown("#### 🤖 AIからの総評")
     st.markdown("まえだ耳鼻咽喉科の最大の強みは、**明確なターゲット基盤（小児・ファミリー層）**がすでに構築されている点にあります。無理に新しい患者層を開拓するよりも、**「今来院されている患者様に対して、必要な検査や治療の選択肢を漏れなく提案し、医療の質を深めること」**が、目標単価750点達成の最短ルートです。明日から、**「今日はファイバーをあと○件実施しよう」**という具体的な1日の目標件数をスタッフ全員で共有し、朝礼などで意識づけを行うことをお勧めします。")
-# 既存のコード（AIからの総評）
-    st.markdown("まえだ耳鼻咽喉科の最大の強みは、**明確なターゲット基盤（小児・ファミリー層）**がすでに構築されている点にあります。無理に新しい患者層を開拓するよりも、**「今来院されている患者様に対して、必要な検査や治療の選択肢を漏れなく提案し、医療の質を深めること」**が、目標単価750点達成の最短ルートです。明日から、**「今日はファイバーをあと○件実施しよう」**という具体的な1日の目標件数をスタッフ全員で共有し、朝礼などで意識づけを行うことをお勧めします。")
-
-    # ==========================================
-    # 🔽 ここから下を追加（スプレッドシートの記事読み込み機能）
-    # ==========================================
-    st.write("---")
-    st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
-    
-    # 以前設定していた「スプレッドシートのCSV公開URL」をここに入れてください。
-    # （※もしZapierがGitHubに直接CSVを保存している運用なら、URLの代わりに "ファイル名.csv" と入れます）
-    SHEET_URL = "ここにスプレッドシートのCSV公開URLを貼り付けます" 
-    
-    try:
-        # UTF-8で読み込み（海外ツールのZapierがスプレッドシートに書き込んだものならUTF-8が標準です）
-        df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
-        
-        # データが空でなければ表示
-        if not df_news.empty:
-            # 最新（下にあるデータ）から順番に10件を表示する設定
-            for idx, row in df_news.iloc[::-1].head(10).iterrows():
-                
-                # ⚠️ 1列目（0）がタイトル、2列目（1）がURLだと仮定しています。
-                # スプレッドシートの実際の列の順番に合わせて [0] や [1] の数字を変更してください。
-                title = str(row.iloc[0])
-                url = str(row.iloc[1])
-                
-                if title != "nan" and url != "nan":
-                    st.markdown(f"- 🔗 [{title}]({url})")
-        else:
-            st.info("現在、表示できる新しい記事はありません。")
-            
-    except Exception as e:
-        st.warning("⚠️ 記事データの読み込み設定が未完了、またはURLが間違っています。コード内の SHEET_URL を確認してください。")
