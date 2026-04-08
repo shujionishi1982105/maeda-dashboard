@@ -15,7 +15,6 @@ st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="w
 # ==========================================
 # 🔒 ログイン機能の設定
 # ==========================================
-# ここでお好きなIDとパスワードに変更できます
 USER_ID = "admin"
 PASSWORD = "maeda2026"
 
@@ -1671,60 +1670,58 @@ elif analysis_mode == "AI総合経営アドバイス":
     st.markdown(top_block, unsafe_allow_html=True)
 
     # ==========================================
-    # 📰 医療トレンド記事（自動判別・3件表示 ＋ 過去記事検索）
+    # 📰 医療トレンド記事（指定のレイアウトと完全マッピング版）
     # ==========================================
     st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
     SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
     
     try:
         df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
-        
-        # 1. データの整形（ヘッダーがデータになってしまっている場合の救済）
-        raw_data = []
-        col_strs = [str(c) for c in df_news.columns]
-        if any("http" in s for s in col_strs):
-            raw_data.append(col_strs)
-        for _, row in df_news.iterrows():
-            raw_data.append([str(v) for v in row.values])
-            
-        # 新しい順にするため反転
-        raw_data.reverse()
-        
         parsed_articles = []
-        for row in raw_data:
-            url = ""
-            title = ""
-            date_str = ""
-            
-            # URLを探す
-            for val in row:
-                if "http" in val:
-                    url = val
-                    break
-                    
-            # 日付らしきものを探す（Zapier仕様対策）
-            for val in row:
-                if val != url and len(val) > 5 and ("-" in val or "/" in val) and any(c.isdigit() for c in val):
-                    # 簡単な日付チェック（最初の10文字程度）
-                    date_str = val[:10]
-                    break
-                    
-            # 残りの文字列で一番長いものをタイトルとする
-            candidates = [v for v in row if v != url and v != date_str and v.strip() != "" and v.strip() != "nan" and "Unnamed" not in v]
-            if candidates:
-                title = max(candidates, key=len)
-            else:
-                title = "記事リンク"
+        
+        for idx, row in df_news.iterrows():
+            try:
+                # A列(0): 日付
+                raw_date = str(row.iloc[0]).strip()
+                if raw_date == "nan" or not raw_date: continue
+                date_str = raw_date[:10].replace('/', '-') 
                 
-            if url:
-                parsed_articles.append({"title": title, "url": url, "date": date_str, "raw": " ".join(row)})
+                # B列(1): 情報元
+                source = str(row.iloc[1]).strip()
+                if source == "nan": source = ""
+                
+                # D列(3): ニュース内容（タイトル＋URL）
+                content = str(row.iloc[3]).strip() if len(row) > 3 else ""
+                if content == "nan": content = ""
+                
+                # URLを抽出してタイトルと分離
+                url_match = re.search(r'(https?://\S+)', content)
+                url = url_match.group(1) if url_match else ""
+                title = content.replace(url, "").strip() if url else content
+                
+                parsed_articles.append({
+                    "date": date_str,
+                    "source": source,
+                    "title": title,
+                    "url": url,
+                    "raw": f"{date_str} {source} {content}" 
+                })
+            except:
+                continue
+                
+        # 新しい記事を上にするため反転
+        parsed_articles.reverse()
 
         if parsed_articles:
-            # --- トップ3件の表示 ---
+            # --- 最新3件の表示 ---
             news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
             for article in parsed_articles[:3]:
-                date_badge = f"<span style='color: #7F8C8D; font-size: 0.85em; margin-right: 10px;'>[{article['date']}]</span>" if article['date'] else ""
-                news_html += f"<li style='margin-bottom: 8px;'>{date_badge}<a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{article['title']}</a></li>"
+                date_badge = f"［{article['date']}］" if article['date'] else ""
+                source_badge = f"{article['source']}　" if article['source'] else ""
+                if article['url']:
+                    news_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
+                else:
+                    news_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
             news_html += "</ul></div>"
             st.markdown(news_html, unsafe_allow_html=True)
             
@@ -1732,7 +1729,6 @@ elif analysis_mode == "AI総合経営アドバイス":
             with st.expander("📂 過去の全記事を検索・閲覧する"):
                 search_query = st.text_input("🔍 キーワードを入力して過去記事を検索", placeholder="例：診療報酬、感染症...")
                 
-                # 検索フィルタリング
                 if search_query:
                     filtered_articles = [a for a in parsed_articles if search_query.lower() in a['raw'].lower()]
                 else:
@@ -1744,8 +1740,12 @@ elif analysis_mode == "AI総合経営アドバイス":
                         
                     expander_html = "<ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
                     for article in filtered_articles:
-                        date_badge = f"<span style='color: #7F8C8D; font-size: 0.85em; margin-right: 10px;'>[{article['date']}]</span>" if article['date'] else ""
-                        expander_html += f"<li style='margin-bottom: 8px;'>{date_badge}<a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['title']}</a></li>"
+                        date_badge = f"［{article['date']}］" if article['date'] else ""
+                        source_badge = f"{article['source']}　" if article['source'] else ""
+                        if article['url']:
+                            expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']} <a href='{article['url']}' target='_blank' style='color: #2E86C1; text-decoration: none;'>{article['url']}</a></li>"
+                        else:
+                            expander_html += f"<li style='margin-bottom: 8px;'><span style='color: #555;'>{date_badge}{source_badge}</span>{article['title']}</li>"
                     expander_html += "</ul>"
                     st.markdown(expander_html, unsafe_allow_html=True)
                 else:
@@ -1753,7 +1753,7 @@ elif analysis_mode == "AI総合経営アドバイス":
         else:
             st.info("現在、表示できる新しい記事はありません。")
     except Exception as e:
-        st.error("⚠️ 記事データの読み込みに失敗しました。")
+        st.error("⚠️ 記事データの読み込みに失敗しました。スプレッドシートの共有設定を確認してください。")
 
     # ==========================================
     # 💡 キードライバー＆シミュレーション
