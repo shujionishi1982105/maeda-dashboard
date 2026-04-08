@@ -1517,227 +1517,26 @@ elif analysis_mode == "検査一覧分析":
     st.dataframe(style_full_matrix(matrix_full_df), use_container_width=True)
 
 # ==========================================
-# G. AI総合経営アドバイス (完全動的データ生成版)
-# ==========================================
-elif analysis_mode == "AI総合経営アドバイス":
-    st.subheader("🤖 AI総合経営アドバイス（目標：レセプト単価750点達成に向けて）")
-    
-    with st.spinner("すべてのデータを統合・多角的に分析しています..."):
-        
-        # --- 1. レセプトデータの取得 ---
-        rece_files = glob.glob("*レセプト*.csv")
-        years_found = sorted(list(set(re.search(r'(R\d+年)', f).group(1) for f in rece_files if re.search(r'(R\d+年)', f))))
-        
-        if not years_found:
-            st.error("データが見つかりません。")
-            st.stop()
-            
-        latest_year_str = years_found[-1]
-        df_rece_ai = get_clean_df(latest_year_str)
-        
-        rece_tanka = 0
-        rece_patients = 0
-        latest_m_ai = "不明"
-        is_fallback_ai = False
-        gap_ai = 0
-        
-        # 課題抽出用
-        worst_item = "不明"
-        worst_diff = 0
-
-        if df_rece_ai is not None and 'レセ単価' in df_rece_ai.columns:
-            target_month, latest_row, is_fallback_ai, original_latest_month = get_latest_complete_month(df_rece_ai, latest_year_str)
-            
-            if target_month:
-                rece_tanka = latest_row['レセ単価_num']
-                latest_m_ai = target_month
-                
-                cnt_col = next((c for c in df_rece_ai.columns if '件数' in c or '枚数' in c), None)
-                if cnt_col:
-                    cnt_str = str(latest_row[cnt_col]).replace(',', '').replace('件', '').replace('枚', '').strip()
-                    rece_patients = float(cnt_str) if cnt_str.replace('.', '', 1).isdigit() else 0
-                
-                gap_ai = 750 - rece_tanka
-
-                latest_m_num = int(latest_m_ai.replace('月', ''))
-                df_tmp_ai = df_rece_ai[df_rece_ai['月'].isin([f"{i}月" for i in range(1, 13)])].copy()
-                
-                if latest_m_num == 1:
-                    prev_year_str = f"R{int(re.search(r'\d+', latest_year_str).group()) - 1}年"
-                    df_prev_ai = get_clean_df(prev_year_str)
-                    prev_month = "12月"
-                    row_p = df_prev_ai[df_prev_ai['月'] == prev_month].iloc[0] if df_prev_ai is not None and not df_prev_ai[df_prev_ai['月'] == prev_month].empty else None
-                else:
-                    prev_month = f"{latest_m_num - 1}月"
-                    row_p = df_tmp_ai[df_tmp_ai['月'] == prev_month].iloc[0] if not df_tmp_ai[df_tmp_ai['月'] == prev_month].empty else None
-                
-                if row_p is not None:
-                    row_c = latest_row
-                    exclude_cols = ["月", "総", "前年", "比", "枚数", "件数", "日数", "レセ単価", "日当点", "平均", "合計", "レセ単価_num"]
-                    comp_cols = [c for c in df_rece_ai.columns if not any(k in c for k in exclude_cols)]
-                    
-                    diffs = []
-                    for col in comp_cols:
-                        if col in row_c and col in row_p:
-                            v_c_str = str(row_c[col]).replace(',', '').replace('点', '').replace('円', '').strip()
-                            v_p_str = str(row_p[col]).replace(',', '').replace('点', '').replace('円', '').strip()
-                            v_c = float(v_c_str) if v_c_str.replace('.', '', 1).isdigit() else 0.0
-                            v_p = float(v_p_str) if v_p_str.replace('.', '', 1).isdigit() else 0.0
-                            diffs.append({'名称': col, '点数差': v_c - v_p})
-                    
-                    if diffs:
-                        df_diff_ai = pd.DataFrame(diffs)
-                        if not df_diff_ai.empty:
-                            worst_row = df_diff_ai.sort_values('点数差', ascending=True).iloc[0]
-                            if worst_row['点数差'] < 0:
-                                worst_item = worst_row['名称']
-                                worst_diff = worst_row['点数差']
-
-        # --- 3. 診療行為データから実施率を取得 ---
-        df_a_curr = get_act_summary_for_ai(latest_year_str, latest_m_ai)
-        fiber_cnt = 0
-        audio_cnt = 0
-        tympa_cnt = 0
-        if not df_a_curr.empty:
-            fiber_cnt = df_a_curr[df_a_curr['名称'].str.contains('ファイバー|ＥＦ', na=False)]['回数'].sum()
-            audio_cnt = df_a_curr[df_a_curr['名称'].str.contains('聴力', na=False)]['回数'].sum()
-            tympa_cnt = df_a_curr[df_a_curr['名称'].str.contains('チンパノ', na=False)]['回数'].sum()
-
-        fiber_rate = (fiber_cnt / rece_patients * 100) if rece_patients > 0 else 0
-        tympa_rate = (tympa_cnt / rece_patients * 100) if rece_patients > 0 else 0
-
-        # --- 4. 年齢構成データの取得 ---
-        kids_cnt = 0
-        total_age_cnt = 0
-        try:
-            target_y_num = int(re.search(r'\d+', latest_year_str).group())
-            target_m_num = int(re.search(r'\d+', latest_m_ai).group())
-            
-            age_files = glob.glob("*受付患者数（年齢別）*.csv")
-            for f in age_files:
-                f_norm = unicodedata.normalize('NFKC', f)
-                match = re.search(r'(?:R|令和)?0*(\d+)年0*(\d+)月', f_norm)
-                if match and int(match.group(1)) == target_y_num and int(match.group(2)) == target_m_num:
-                    for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
-                        try:
-                            df_age = pd.read_csv(f, encoding=enc)
-                            if '日' not in df_age.columns: continue 
-                            df_age = df_age[df_age['日'].str.contains('日', na=False)]
-                            for col in df_age.columns:
-                                if col != '日':
-                                    df_age[col] = pd.to_numeric(df_age[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-                            sum_age = df_age.drop(columns=['日']).sum()
-                            t1_cols = [c for c in ['～3歳', '3～6歳', '6～12歳'] if c in sum_age.index]
-                            kids_cnt = sum_age[t1_cols].sum()
-                            total_age_cnt = sum_age['延べ患者数 (人)'] if '延べ患者数 (人)' in sum_age.index else sum_age.sum()
-                            break
-                        except: continue
-        except:
-            pass
-            
-        kids_ratio = (kids_cnt / total_age_cnt * 100) if total_age_cnt > 0 else 0
-
-        # --- 5. シミュレーション計算 ---
-        if gap_ai > 0 and rece_patients > 0:
-            required_points_total = gap_ai * rece_patients
-            add_fiber_cnt = required_points_total / 600
-            new_fiber_rate = ((fiber_cnt + add_fiber_cnt) / rece_patients * 100)
-            
-            add_tympa_cnt = required_points_total / 340
-            new_tympa_rate = ((tympa_cnt + add_tympa_cnt) / rece_patients * 100)
-            
-            req_audio = required_points_total / 350
-        else:
-            required_points_total = 0
-            add_fiber_cnt = 0
-            new_fiber_rate = 0
-            add_tympa_cnt = 0
-            new_tympa_rate = 0
-            req_audio = 0
-
-    st.write("<br>", unsafe_allow_html=True)
-    
-    if gap_ai > 0:
-        status_color = "#E74C3C"
-        status_text = f"あと {gap_ai:,.0f} 点 不足しています"
-    else:
-        status_color = "#27AE60"
-        status_text = f"目標を {abs(gap_ai):,.0f} 点 上回って達成中です！"
-
-    fallback_html = ""
-    if is_fallback_ai:
-        fallback_html = f"<div style='background-color:#FFF3CD; color:#856404; padding:5px 10px; border-radius:5px; font-size:0.85em; margin-bottom:10px;'>⚠️ 最新月の診療データが未確定のため、データが揃っている<b>【{latest_m_ai}】</b>を基準に表示しています。</div>"
-
-    top_block = "<div style='background-color: #F8F9F9; padding: 20px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'>" + f"{fallback_html}" + "<h3 style='color: #2C3E50; margin-top: 0; margin-bottom: 10px;'>📊 現在地と目標のギャップ確認</h3>" + "<p style='font-size: 1.1rem; line-height: 1.6; margin-bottom:0;'>" + "<span style='background-color:#EBF5FB; padding:2px 6px; border-radius:4px; font-size:0.85em; color:#2E86C1;'>ℹ️ レセプトデータと同期した確定月を表示</span><br>" + f"最新実績（{latest_year_str} {latest_m_ai}）におけるレセプト単価は <b>{rece_tanka:,.0f} 点</b> です。<br>" + f"今年の目標である <b>750点</b> に対して、現在 <b style='color: {status_color}; font-size: 1.3rem;'>{status_text}</b>。" + "</p></div>"
-    st.markdown(top_block, unsafe_allow_html=True)
-    
-    # ==========================================
     # 📰 医療トレンド記事（指定の場所に移動）
     # ==========================================
     st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
     
-    # ⚠️⚠️⚠️【重要】以下の "" の中身を、実際のスプレッドシートのCSV公開URLに書き換えてください！⚠️⚠️⚠️
-    SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/edit?gid=0#gid=0" 
+    # 編集画面のURLではなく、プログラム読み込み用のCSVエクスポートURLに変換済みです
+    SHEET_URL = "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/export?format=csv&gid=0"
     
-    if SHEET_URL == "https://docs.google.com/spreadsheets/d/1claYf4VKHTJk3NgJWrMfM7CaSBCW1kv-3VQZgOivx2Q/edit?gid=0#gid=0":
-        st.warning("⚠️ コード内の `SHEET_URL` に実際のスプレッドシートの公開URL（CSV形式）が貼り付けられていません。GitHubでコードを修正してください。")
-    else:
-        try:
-            df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
-            if not df_news.empty:
-                # 枠の中にスクロール付きで綺麗に表示
-                news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px; max-height: 200px; overflow-y: auto;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
-                for idx, row in df_news.iloc[::-1].head(10).iterrows():
-                    title = str(row.iloc[0])
-                    url = str(row.iloc[1])
-                    if title != "nan" and url != "nan":
-                        news_html += f"<li><a href='{url}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{title}</a></li>"
-                news_html += "</ul></div>"
-                st.markdown(news_html, unsafe_allow_html=True)
-            else:
-                st.info("現在、表示できる新しい記事はありません。")
-        except Exception as e:
-            st.error("⚠️ 記事データの読み込みに失敗しました。URLが間違っているか、CSVとして公開されていない可能性があります。")
-
-    # ==========================================
-    # 💡 キードライバー＆シミュレーション
-    # ==========================================
-    col_h1, col_h2 = st.columns(2)
-    with col_h1:
-        st.markdown("<div style='height: 60px; display: flex; align-items: flex-end; margin-bottom: 15px;'><h4 style='margin: 0; padding: 0; color: #31333F; font-size: 1.25rem;'>💡 達成に向けたキードライバー<br><span style='font-size: 1rem; font-weight: normal; color: #555;'>（AIが抽出した現状の課題と対策）</span></h4></div>", unsafe_allow_html=True)
-    with col_h2:
-        st.markdown("<div style='height: 60px; display: flex; align-items: flex-end; margin-bottom: 15px;'><h4 style='margin: 0; padding: 0; color: #31333F; font-size: 1.25rem;'>📈 シミュレーション<br><span style='font-size: 1rem; font-weight: normal; color: #555;'>（あとどれくらい必要か？）</span></h4></div>", unsafe_allow_html=True)
-        
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        issue_text = ""
-        if kids_ratio > 0:
-            issue_text += f"<li><b>小児層の集患基盤：</b> 現在、患者全体の<b>約{kids_ratio:.1f}%</b>が12歳以下の小児層です。ファミリー層からの強い支持を活かしたアプローチが有効です。</li>"
-            
-        if worst_diff < 0:
-            issue_text += f"<li style='margin-top:10px;'><b>「{worst_item}」項目の下落：</b> レセプトデータ分析の結果、前月比で「{worst_item}」が全体で<b>{abs(worst_diff):,.0f}点低下</b>し、単価の足を引っ張っています。算定漏れがないかレセコンの入力確認が必要です。</li>"
-            
-        if tympa_rate > 0 and tympa_rate < 20 and kids_ratio > 20:
-            issue_text += f"<li style='margin-top:10px;'><b>小児割合に対する検査の少なさ：</b> 小児が多いにも関わらず、チンパノメトリーの実施率が <b>{tympa_rate:.1f}%</b> に留まっています。中耳炎の客観的評価の機会を損失している可能性があります。</li>"
-            
-        if not issue_text:
-            issue_text = "<li>目立ったマイナス要因は見当たらず、全体的に安定した推移を見せています。</li>"
-            
-        adv_block = "<div class='target-box' style='height: 100%;'>" + "<ul style='font-size: 1.05rem; line-height: 1.6; padding-left: 20px;'>" + f"{issue_text}" + "</ul>" + "<hr style='border-top: 1px dashed #AED6F1;'>" + "<b>【AIからの推奨アクション】</b><br>" + "小児の鼻症状・耳症状受付時に、スタッフ主導でチンパノメトリーやファイバー検査へ誘導する<b>「セット実施フロー」</b>を構築し、医師の負担を減らしつつ算定漏れを防ぎましょう。" + "</div>"
-        st.markdown(adv_block, unsafe_allow_html=True)
-
-    with col_c2:
-        if gap_ai > 0 and rece_patients > 0:
-            sim_block = "<div style='border: 2px solid #AED6F1; border-radius: 10px; padding: 15px; background-color: #EBF5FB; height: 100%;'>" + f"<p>現在の月間患者数（約 <b>{rece_patients:,.0f} 人</b>）をベースに計算すると、単価をあと {gap_ai:,.0f} 点引き上げるには、月に <b>約 {required_points_total:,.0f} 点</b> の積み上げが必要です。</p>" + "<hr style='border-top: 1px dashed #AED6F1;'>" + "<p style='margin-bottom: 5px;'>これを当院の<b>注力検査</b>の実施件数で換算すると...</p>" + "<div style='background-color:#fff; padding:10px; border-radius:5px; margin-bottom:10px;'>" + f"<b style='color:#2E86C1;'>① チンパノメトリーの徹底</b><br>現在の実施率 {tympa_rate:.1f}% を <b>{new_tympa_rate:.1f}%</b> に引き上げる。<br><span style='font-size:0.9em; color:#555;'>（月にあと <b>約 {add_tympa_cnt:,.0f} 件</b> 追加 / 1日約 {add_tympa_cnt/20:.1f}件）</span>" + "</div>" + "<div style='background-color:#fff; padding:10px; border-radius:5px; margin-bottom:10px;'>" + f"<b style='color:#2E86C1;'>② ファイバーの適応拡大</b><br>現在の実施率 {fiber_rate:.1f}% を <b>{new_fiber_rate:.1f}%</b> に引き上げる。<br><span style='font-size:0.9em; color:#555;'>（月にあと <b>約 {add_fiber_cnt:,.0f} 件</b> 追加 / 1日約 {add_fiber_cnt/20:.1f}件）</span>" + "</div>" + "<p style='font-size: 0.85rem; color: #777; margin-top: 10px;'>※1ヶ月の診療日数を20日として計算。すべての不足分を1つの検査で補った場合の目安です。</p>" + "</div>"
-            st.markdown(sim_block, unsafe_allow_html=True)
+    try:
+        df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
+        if not df_news.empty:
+            # 枠の中にスクロール付きで綺麗に表示
+            news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px; max-height: 200px; overflow-y: auto;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
+            for idx, row in df_news.iloc[::-1].head(10).iterrows():
+                title = str(row.iloc[0])
+                url = str(row.iloc[1])
+                if title != "nan" and url != "nan":
+                    news_html += f"<li><a href='{url}' target='_blank' style='color: #2E86C1; text-decoration: none; font-weight: bold;'>{title}</a></li>"
+            news_html += "</ul></div>"
+            st.markdown(news_html, unsafe_allow_html=True)
         else:
-            if gap_ai <= 0:
-                succ_block2 = "<div style='border: 2px solid #27AE60; border-radius: 10px; padding: 15px; background-color: #EAFAF1; height: 100%;'>" + "<p style='font-size:1.1rem; color:#1E8449; font-weight:bold; text-align:center;'>🎉 すでに目標単価をクリアしています！</p>" + "<p style='margin-top:10px;'>現在の素晴らしい取り組みを継続しつつ、さらに「患者満足度の向上」や「スタッフの業務効率化」など、次のステージに向けた施策にシフトしていくことをお勧めします。</p>" + "</div>"
-                st.markdown(succ_block2, unsafe_allow_html=True)
-            else:
-                err_block = "<div style='border: 2px solid #E74C3C; border-radius: 10px; padding: 15px; background-color: #FDEDEC; height: 100%;'>" + "<p style='font-size:1.1rem; color:#C0392B; font-weight:bold; text-align:center;'>患者数のデータが取得できません</p>" + "<p style='margin-top:10px;'>レセプトデータの中に「件数」や「枚数」を示す項目が見つからなかったため、シミュレーションの計算ができませんでした。</p>" + "</div>"
-                st.markdown(err_block, unsafe_allow_html=True)
-        
-    st.write("---")
-    st.markdown("#### 🤖 AIからの総評")
-    st.markdown("まえだ耳鼻咽喉科の最大の強みは、**明確なターゲット基盤（小児・ファミリー層）**がすでに構築されている点にあります。無理に新しい患者層を開拓するよりも、**「今来院されている患者様に対して、必要な検査や治療の選択肢を漏れなく提案し、医療の質を深めること」**が、目標単価750点達成の最短ルートです。明日から、**「今日はファイバーをあと○件実施しよう」**という具体的な1日の目標件数をスタッフ全員で共有し、朝礼などで意識づけを行うことをお勧めします。")
+            st.info("現在、表示できる新しい記事はありません。")
+    except Exception as e:
+        st.error("⚠️ 記事データの読み込みに失敗しました。スプレッドシートの共有設定が「リンクを知っている全員」になっているか確認してください。")
