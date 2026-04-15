@@ -38,7 +38,6 @@ if not st.session_state.logged_in:
                     st.error("⚠️ IDまたはパスワードが間違っています。")
     st.stop()
 
-
 # --- 共通CSS設定 ---
 st.markdown("""
     <style>
@@ -55,13 +54,11 @@ st.markdown("""
         font-weight: bold;
         color: #E74C3C;
     }
-
     /* === セレクトボックスのカーソルを指マークにする === */
     div[data-baseweb="select"],
     div[data-baseweb="select"] * {
         cursor: pointer !important;
     }
-    
     /* === ナビゲーションボタンの確実なカスタムデザイン === */
     div.stButton > button {
         height: 65px !important;
@@ -73,7 +70,6 @@ st.markdown("""
         white-space: normal !important;
         line-height: 1.3 !important;
     }
-    
     /* 【未選択のボタン (secondary)】薄い青背景 */
     div.stButton > button[kind="secondary"],
     div.stButton > button[data-testid="baseButton-secondary"] {
@@ -86,7 +82,6 @@ st.markdown("""
     div.stButton > button[data-testid="baseButton-secondary"] div {
         color: #154360 !important;
     }
-
     /* 【選択中のボタン (primary)】赤背景 */
     div.stButton > button[kind="primary"],
     div.stButton > button[data-testid="baseButton-primary"] {
@@ -99,13 +94,11 @@ st.markdown("""
     div.stButton > button[data-testid="baseButton-primary"] div {
         color: #FFFFFF !important;
     }
-
     /* マウスホバー時 */
     div.stButton > button:hover {
         transform: translateY(-2px) !important;
         filter: brightness(0.95) !important;
     }
-
     /* === ヘッダーのロゴとタイトルの高さ合わせ === */
     .header-container {
         display: flex;
@@ -120,7 +113,6 @@ st.markdown("""
         margin: 0 !important; 
         padding-top: 15px !important; 
     }
-
     /* === KPI枠・AI分析枠のCSS === */
     .kpi-container {
         height: 250px; 
@@ -152,7 +144,7 @@ st.markdown("""
         min-height: 220px;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # ==========================================
 # 共通関数 (全ページで利用)
@@ -453,7 +445,6 @@ if analysis_mode == "レセプト分析":
                         for _, row in top_diffs.iterrows():
                             if row['点数差'] != 0:
                                 sign_p = "+" if row['点数差'] > 0 else ""
-                                
                                 cat_raw = str(row['区分'])
                                 cat_clean = re.sub(r'^\d+\s*', '', cat_raw)
                                 item_name = str(row['名称'])
@@ -562,7 +553,6 @@ if analysis_mode == "レセプト分析":
             return styled.apply(apply_colors, axis=1)
 
         st.dataframe(make_styled_df(display_df), use_container_width=True)
-
 
 # ==========================================
 # B. 外来収入金額推移分析
@@ -683,7 +673,6 @@ elif analysis_mode == "外来収入金額推移分析":
         return styler.apply(apply_colors, axis=1)
         
     st.dataframe(style_income_table(st_df_inc), use_container_width=True)
-
 
 # ==========================================
 # C. 受付患者数推移分析 (初再診別)
@@ -840,7 +829,6 @@ elif analysis_mode == "受付患者数（初再診別）推移分析":
     fig4.update_yaxes(title_text="人数 (人)", secondary_y=False)
     fig4.update_yaxes(title_text="率 (%)", secondary_y=True, range=[0, max(df_monthly['再初診率']) * 1.2], showgrid=False)
     st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': False})
-
 
 # ==========================================
 # D. 年齢別構成比分析
@@ -1538,7 +1526,6 @@ elif analysis_mode == "AI総合経営アドバイス":
         latest_m_ai = "不明"
         is_fallback_ai = False
         gap_ai = 0
-        
         worst_item = "不明"
         worst_diff = 0
 
@@ -1606,6 +1593,7 @@ elif analysis_mode == "AI総合経営アドバイス":
         # --- 3. 年齢構成データの取得 ---
         kids_cnt = 0
         total_age_cnt = 0
+        kids_ratio = 0
         try:
             target_y_num = int(re.search(r'\d+', latest_year_str).group())
             target_m_num = int(re.search(r'\d+', latest_m_ai).group())
@@ -1632,14 +1620,13 @@ elif analysis_mode == "AI総合経営アドバイス":
         except:
             pass
             
-        kids_ratio = (kids_cnt / total_age_cnt * 100) if total_age_cnt > 0 else 0
+        if total_age_cnt > 0: kids_ratio = (kids_cnt / total_age_cnt * 100)
 
         # --- 4. シミュレーション計算 ---
         if gap_ai > 0 and rece_patients > 0:
             required_points_total = gap_ai * rece_patients
             add_fiber_cnt = required_points_total / 600
             new_fiber_rate = ((fiber_cnt + add_fiber_cnt) / rece_patients * 100)
-            
             add_tympa_cnt = required_points_total / 340
             new_tympa_rate = ((tympa_cnt + add_tympa_cnt) / rece_patients * 100)
         else:
@@ -1655,6 +1642,7 @@ elif analysis_mode == "AI総合経営アドバイス":
         trend_infection = False
         trend_revision = False
         trend_dx = False
+        trend_ent = False
         
         try:
             df_news = pd.read_csv(SHEET_URL, encoding='utf-8')
@@ -1691,13 +1679,13 @@ elif analysis_mode == "AI総合経営アドバイス":
                     continue
             parsed_articles.reverse() # 最新順に
             
-            # 【トレンド分析】最新10件のニュースから世の中の動きを判定
+            # 【トレンド分析】最新15件のニュースから世の中の動きを判定
             if parsed_articles:
-                recent_text = " ".join([a['raw'] for a in parsed_articles[:10]])
+                recent_text = " ".join([a['raw'] for a in parsed_articles[:15]])
                 trend_infection = any(k in recent_text for k in ["感染症", "コロナ", "インフル", "RS", "流行"])
                 trend_revision = any(k in recent_text for k in ["改定", "診療報酬", "施設基準", "算定"])
                 trend_dx = any(k in recent_text for k in ["DX", "マイナ", "デジタル", "オンライン"])
-
+                trend_ent = any(k in recent_text for k in ["耳鼻", "中耳炎", "アレルギー", "難聴", "学会", "ガイドライン"])
         except Exception as e:
             pass
 
@@ -1718,7 +1706,7 @@ elif analysis_mode == "AI総合経営アドバイス":
     top_block = "<div style='background-color: #F8F9F9; padding: 20px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'>" + f"{fallback_html}" + "<h3 style='color: #2C3E50; margin-top: 0; margin-bottom: 10px;'>📊 現在地と目標のギャップ確認</h3>" + "<p style='font-size: 1.1rem; line-height: 1.6; margin-bottom:0;'>" + "<span style='background-color:#EBF5FB; padding:2px 6px; border-radius:4px; font-size:0.85em; color:#2E86C1;'>ℹ️ レセプトデータと同期した確定月を表示</span><br>" + f"最新実績（{latest_year_str} {latest_m_ai}）におけるレセプト単価は <b>{rece_tanka:,.0f} 点</b> です。<br>" + f"今年の目標である <b>750点</b> に対して、現在 <b style='color: {status_color}; font-size: 1.3rem;'>{status_text}</b>。" + "</p></div>"
     st.markdown(top_block, unsafe_allow_html=True)
 
-    st.markdown("#### 📰 医療トレンド・参考記事（自動収集）")
+    st.markdown("#### 📰 医療トレンド・参考記事（自動判別）")
     if parsed_articles:
         news_html = "<div style='background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #D5D8DC; margin-bottom: 20px;'><ul style='margin: 0; padding-left: 20px; line-height: 1.8;'>"
         for article in parsed_articles[:3]:
@@ -1776,12 +1764,14 @@ elif analysis_mode == "AI総合経営アドバイス":
             issue_text += f"<li style='margin-top:10px;'><b>小児割合に対する検査の少なさ：</b> チンパノメトリーの実施率が <b>{tympa_rate:.1f}%</b> に留まっています。中耳炎の客観的評価の機会損失にご注意ください。</li>"
             
         # 外部トレンド（ニュース）からの課題反映
+        if trend_ent:
+            issue_text += f"<li style='margin-top:10px; color:#2E86C1;'><b>【外部トレンド: 学会・専門領域】</b> 耳鼻咽喉科の最新指針や臨床関連ニュースが発信されています。新基準に基づいた適切な検査・処置の提案をスタッフ間で共有しましょう。</li>"
         if trend_infection:
-            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 感染症動向】</b> 直近のニュースで感染症の動向が報じられています。当院の小児割合（約{kids_ratio:.1f}%）を考慮し、迅速検査キットの適正な在庫確保や、発熱患者の導線見直しを推奨します。</li>"
+            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 感染症動向】</b> 直近のニュースで感染症の動向が報じられています。当院の小児割合（約{kids_ratio:.1f}%）を考慮し、迅速検査キットの適正な確保や発熱患者の導線見直しを推奨します。</li>"
         if trend_revision:
-            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 制度・報酬改定】</b> 診療報酬等に関する最新情報が発信されています。特に低下している「{worst_item}」について、算定要件に変更がないか確認を推奨します。</li>"
+            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 制度・報酬改定】</b> 診療報酬等に関する最新情報が発信されています。特に低下傾向にある「{worst_item}」について、算定要件に変更がないか確認を推奨します。</li>"
         if trend_dx:
-            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 医療DX推進】</b> 医療DXに関するニュースが注目されています。来院患者（約{rece_patients:,.0f}人/月）に対する受付スタッフの負担軽減のため、WEB問診やシステム案内の強化が有効です。</li>"
+            issue_text += f"<li style='margin-top:10px; color:#E74C3C;'><b>【外部トレンド: 医療DX推進】</b> 医療DXに関するニュースが注目されています。来院患者に対する受付スタッフの負担軽減のため、マイナ保険証やWEB問診の案内強化が有効です。</li>"
             
         if not issue_text:
             issue_text = "<li>目立ったマイナス要因は見当たらず、全体的に安定した推移を見せています。</li>"
