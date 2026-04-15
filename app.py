@@ -38,6 +38,7 @@ if not st.session_state.logged_in:
                     st.error("⚠️ IDまたはパスワードが間違っています。")
     st.stop()
 
+
 # --- 共通CSS設定 ---
 st.markdown("""
     <style>
@@ -54,11 +55,13 @@ st.markdown("""
         font-weight: bold;
         color: #E74C3C;
     }
+
     /* === セレクトボックスのカーソルを指マークにする === */
     div[data-baseweb="select"],
     div[data-baseweb="select"] * {
         cursor: pointer !important;
     }
+    
     /* === ナビゲーションボタンの確実なカスタムデザイン === */
     div.stButton > button {
         height: 65px !important;
@@ -70,6 +73,7 @@ st.markdown("""
         white-space: normal !important;
         line-height: 1.3 !important;
     }
+    
     /* 【未選択のボタン (secondary)】薄い青背景 */
     div.stButton > button[kind="secondary"],
     div.stButton > button[data-testid="baseButton-secondary"] {
@@ -82,6 +86,7 @@ st.markdown("""
     div.stButton > button[data-testid="baseButton-secondary"] div {
         color: #154360 !important;
     }
+
     /* 【選択中のボタン (primary)】赤背景 */
     div.stButton > button[kind="primary"],
     div.stButton > button[data-testid="baseButton-primary"] {
@@ -94,11 +99,13 @@ st.markdown("""
     div.stButton > button[data-testid="baseButton-primary"] div {
         color: #FFFFFF !important;
     }
+
     /* マウスホバー時 */
     div.stButton > button:hover {
         transform: translateY(-2px) !important;
         filter: brightness(0.95) !important;
     }
+
     /* === ヘッダーのロゴとタイトルの高さ合わせ === */
     .header-container {
         display: flex;
@@ -113,6 +120,7 @@ st.markdown("""
         margin: 0 !important; 
         padding-top: 15px !important; 
     }
+
     /* === KPI枠・AI分析枠のCSS === */
     .kpi-container {
         height: 250px; 
@@ -144,7 +152,7 @@ st.markdown("""
         min-height: 220px;
     }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # ==========================================
 # 共通関数 (全ページで利用)
@@ -445,6 +453,7 @@ if analysis_mode == "レセプト分析":
                         for _, row in top_diffs.iterrows():
                             if row['点数差'] != 0:
                                 sign_p = "+" if row['点数差'] > 0 else ""
+                                
                                 cat_raw = str(row['区分'])
                                 cat_clean = re.sub(r'^\d+\s*', '', cat_raw)
                                 item_name = str(row['名称'])
@@ -643,11 +652,18 @@ elif analysis_mode == "外来収入金額推移分析":
     st.write("### 📋 詳細数値データ（年間一覧）")
     
     st_df_inc = plot_df_inc.copy()
-    sum_curr = st_df_inc['当年'].sum()
-    sum_prev = st_df_inc['前年'].sum()
-    sum_ratio = round(sum_curr / sum_prev * 100, 1) if sum_prev > 0 else 0
     
-    sum_row = pd.DataFrame([{'月': '総数・平均', '当年': sum_curr, '前年': sum_prev, '前年比': sum_ratio}])
+    # 当年のデータが存在する月（稼働月）を取得
+    active_months_inc = df_curr_inc['月'].unique().tolist()
+    
+    sum_curr = st_df_inc['当年'].sum()
+    sum_prev_total = st_df_inc['前年'].sum() # 表示用は前年の1年分合計
+    
+    # 前年比の計算用には、当年と同じ月数分だけを合計する（YTD比較）
+    sum_prev_ytd = st_df_inc[st_df_inc['月'].isin(active_months_inc)]['前年'].sum()
+    sum_ratio = round(sum_curr / sum_prev_ytd * 100, 1) if sum_prev_ytd > 0 else 0
+    
+    sum_row = pd.DataFrame([{'月': '合計', '当年': sum_curr, '前年': sum_prev_total, '前年比': sum_ratio}])
     st_df_inc = pd.concat([st_df_inc, sum_row], ignore_index=True)
     
     def style_income_table(df):
@@ -665,10 +681,9 @@ elif analysis_mode == "外来収入金額推移分析":
                         if v >= 100: styles[i] = 'color: #2E86C1; font-weight: bold'
                         elif 0 < v < 100: styles[i] = 'color: #E74C3C; font-weight: bold'
                     except: pass
-                elif row.name == '総数・平均' and col == '当年':
-                    p_val = row['前年']
-                    if val >= p_val and p_val != 0: styles[i] = 'color: #2E86C1; font-weight: bold'
-                    elif val < p_val and p_val != 0: styles[i] = 'color: #E74C3C; font-weight: bold'
+                elif row.name == '合計' and col == '当年':
+                    if sum_ratio >= 100 and sum_prev_ytd != 0: styles[i] = 'color: #2E86C1; font-weight: bold'
+                    elif sum_ratio < 100 and sum_prev_ytd != 0: styles[i] = 'color: #E74C3C; font-weight: bold'
             return styles
         return styler.apply(apply_colors, axis=1)
         
