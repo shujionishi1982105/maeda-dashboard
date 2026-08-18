@@ -1541,6 +1541,7 @@ elif analysis_mode == "医師別診療実績（月別）":
 
                     df_d['診療科'] = df_d['診療科'].astype(str).str.strip().replace('nan', pd.NA).ffill()
                     df_d['医師'] = df_d['医師'].astype(str).str.strip()
+                    df_d['医師'] = df_d['医師'].replace({'本田': '本田　徹'})
                     doctor_norm = df_d['医師'].str.replace('　', '', regex=False).str.replace(' ', '', regex=False)
                     df_d = df_d[~doctor_norm.str.contains('小計|合計', na=False)]
                     df_d = df_d[df_d['医師'] != '']
@@ -1630,6 +1631,41 @@ elif analysis_mode == "医師別診療実績（月別）":
         return styler
 
     st.dataframe(style_rank_doc(disp_rank_doc), use_container_width=True)
+
+    st.write("---")
+    st.write("### 📊 月別推移（全医師横並び）")
+
+    month_options_doc = [m for m in valid_months_doc if m in active_months_doc]
+
+    if month_options_doc:
+        col_month_doc, col_metric_doc = st.columns([2, 1])
+        with col_month_doc:
+            selected_month_doc = st.selectbox("📅 表示する月を選択してください", month_options_doc, index=len(month_options_doc)-1, key="doc_month_select")
+        with col_metric_doc:
+            selected_metric_doc = st.radio("🔍 表示する指標", ["保険点数", "単価"], horizontal=True, key="doc_month_metric")
+
+        month_df_doc = df_curr_doc[df_curr_doc['月'] == selected_month_doc].groupby('医師')[['件数', '保険点数']].sum().reset_index()
+        month_df_doc['単価'] = month_df_doc.apply(lambda x: round(x['保険点数'] / x['件数'], 1) if x['件数'] > 0 else 0, axis=1)
+        month_df_doc = month_df_doc.sort_values(selected_metric_doc, ascending=False)
+
+        unit_doc = "点" if selected_metric_doc == "保険点数" else "点/件"
+        text_fmt_doc = "{:,.0f}" if selected_metric_doc == "保険点数" else "{:,.1f}"
+
+        fig_month_doc = go.Figure()
+        fig_month_doc.add_trace(go.Bar(
+            x=month_df_doc['医師'], y=month_df_doc[selected_metric_doc],
+            marker_color='#2E86C1',
+            text=month_df_doc[selected_metric_doc].apply(lambda v: text_fmt_doc.format(v)),
+            textposition='outside',
+            hovertemplate=f"<b>%{{x}}</b><br>{selected_metric_doc}: %{{y:,.1f}} {unit_doc}<extra></extra>"
+        ))
+        fig_month_doc.update_layout(
+            xaxis_title="医師", yaxis_title=f"{selected_metric_doc} ({unit_doc})",
+            showlegend=False
+        )
+        st.plotly_chart(fig_month_doc, use_container_width=True, config={'displayModeBar': False})
+    else:
+        st.info("表示できる月のデータがありません。")
 
     st.write("---")
     st.write("### 📈 医師別 月別推移")
