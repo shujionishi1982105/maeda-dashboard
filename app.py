@@ -293,6 +293,7 @@ pages = [
     "年齢別構成比分析",
     "診療行為一覧分析",
     "検査一覧分析",
+    "医師別診療実績（月別）",
     "AI総合経営アドバイス"
 ]
 
@@ -1518,7 +1519,218 @@ elif analysis_mode == "検査一覧分析":
     st.dataframe(style_full_matrix(matrix_full_df), use_container_width=True)
 
 # ==========================================
-# G. AI総合経営アドバイス (トレンド反映・Bルート攻略版)
+# G. 医師別診療実績（月別）
+# ==========================================
+elif analysis_mode == "医師別診療実績（月別）":
+    doc_files = glob.glob("*診療科別月計表*.csv")
+    if not doc_files:
+        st.error("診療科別月計表のCSVファイルが見つかりません。")
+        st.stop()
+
+    data_list = []
+    for f in doc_files:
+        match = re.search(r'(R\d+)年(\d+)月', f)
+        if match:
+            year_str = match.group(1) + "年"
+            month_str = match.group(2) + "月"
+            for enc in ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']:
+                try:
+                    df_d = pd.read_csv(f, encoding=enc)
+                    if '医師' not in df_d.columns:
+                        continue
+
+                    df_d['診療科'] = df_d['診療科'].astype(str).str.strip().replace('nan', pd.NA).ffill()
+                    df_d['医師'] = df_d['医師'].astype(str).str.strip()
+                    doctor_norm = df_d['医師'].str.replace('　', '', regex=False).str.replace(' ', '', regex=False)
+                    df_d = df_d[~doctor_norm.str.contains('小計|合計', na=False)]
+                    df_d = df_d[df_d['医師'] != '']
+
+                    for col in ['件数 [件]', '保険点数 [点]']:
+                        if col in df_d.columns:
+                            df_d[col] = pd.to_numeric(
+                                df_d[col].astype(str).str.replace(r'[，,件点円]', '', regex=True),
+                                errors='coerce'
+                            ).fillna(0)
+
+                    df_d = df_d.rename(columns={'件数 [件]': '件数', '保険点数 [点]': '保険点数'})
+                    df_d['年度'] = year_str
+                    df_d['月'] = month_str
+                    data_list.append(df_d[['年度', '月', '診療科', '医師', '件数', '保険点数']])
+                    break
+                except Exception:
+                    continue
+
+    if not data_list:
+        st.error("有効な医師別診療実績データを読み込めませんでした。")
+        st.stop()
+
+    doc_df = pd.concat(data_list, ignore_index=True)
+
+    available_years = sorted(list(doc_df['年度'].unique()), key=lambda x: int(re.search(r'\d+', x).group()))
+    selected_year_doc = st.selectbox("📅 表示する年度を選択してください", available_years, index=len(available_years)-1, key="doc_year")
+
+    current_num_doc = int(re.search(r'\d+', selected_year_doc).group())
+    prev_year_doc = f"R{current_num_doc - 1}年"
+
+    st.subheader(f"📊 {selected_year_doc} 医師別診療実績分析")
+
+    df_curr_doc = doc_df[doc_df['年度'] == selected_year_doc].copy()
+    active_months_doc = df_curr_doc['月'].unique().tolist()
+    valid_months_doc = [f"{i}月" for i in range(1, 13)]
+
+    df_prev_doc_full = doc_df[doc_df['年度'] == prev_year_doc].copy()
+    df_prev_doc_ytd = df_prev_doc_full[df_prev_doc_full['月'].isin(active_months_doc)]
+
+    curr_sum_doc = df_curr_doc.groupby('医師')[['件数', '保険点数']].sum().reset_index()
+
+    if not df_prev_doc_ytd.empty:
+        prev_sum_doc = df_prev_doc_ytd.groupby('医師')[['保険点数']].sum().reset_index().rename(columns={'保険点数': '前年保険点数'})
+        rank_df_doc = pd.merge(curr_sum_doc, prev_sum_doc, on='医師', how='left').fillna(0)
+    else:
+        rank_df_doc = curr_sum_doc.copy()
+        rank_df_doc['前年保険点数'] = 0
+
+    rank_df_doc['単価'] = rank_df_doc.apply(lambda x: round(x['保険点数'] / x['件数'], 1) if x['件数'] > 0 else 0, axis=1)
+    rank_df_doc['前年比'] = rank_df_doc.apply(lambda x: round((x['保険点数'] / x['前年保険点数']) * 100, 1) if x['前年保険点数'] > 0 else 0, axis=1)
+
+    rank_df_doc = rank_df_doc.sort_values('保険点数', ascending=False).reset_index(drop=True)
+    rank_df_doc.index = rank_df_doc.index + 1
+
+    st.write("#### 🏆 医師別 年間実績ランキング")
+
+    if active_months_doc:
+        active_months_sorted_doc = sorted(active_months_doc, key=lambda x: int(re.search(r'\d+', x).group()))
+        if len(active_months_sorted_doc) == 12:
+            st.caption("※前年比は、前年の年間トータルと比較しています。")
+        else:
+            st.caption(f"※前年比は、当年のデータが存在する月（{active_months_sorted_doc[0]}〜{active_months_sorted_doc[-1]}）の同期間で比較しています。")
+
+    disp_rank_doc = rank_df_doc[['医師', '件数', '保険点数', '単価', '前年比']].copy()
+
+    def style_rank_doc(df):
+        styler = df.style
+        fmt = {
+            '件数': "{:,.0f} 件",
+            '保険点数': "{:,.0f} 点",
+            '単価': "{:,.1f} 点",
+            '前年比': "{:.1f}%"
+        }
+        styler = styler.format(fmt)
+
+        def color_yoy(val):
+            try:
+                v = float(val)
+                if v >= 100: return 'color: #2E86C1; font-weight: bold'
+                elif 0 < v < 100: return 'color: #E74C3C; font-weight: bold'
+                return ''
+            except:
+                return ''
+
+        styler = styler.map(color_yoy, subset=['前年比'])
+        return styler
+
+    st.dataframe(style_rank_doc(disp_rank_doc), use_container_width=True)
+
+    st.write("---")
+    st.write("### 📈 医師別 月別推移")
+
+    all_doctors = sorted(list(set(df_curr_doc['医師'].unique().tolist() + df_prev_doc_full['医師'].unique().tolist())))
+    default_doc = rank_df_doc.iloc[0]['医師'] if not rank_df_doc.empty else (all_doctors[0] if all_doctors else "")
+
+    if all_doctors:
+        selected_doctor = st.selectbox("🔍 グラフ表示する医師を選択してください", all_doctors, index=all_doctors.index(default_doc) if default_doc in all_doctors else 0)
+
+        plot_df_doc = pd.DataFrame({'月': valid_months_doc})
+        curr_doc_data = df_curr_doc[df_curr_doc['医師'] == selected_doctor].groupby('月')[['件数', '保険点数']].sum().reset_index().rename(columns={'保険点数': '当年'})
+        prev_doc_data = df_prev_doc_full[df_prev_doc_full['医師'] == selected_doctor].groupby('月')['保険点数'].sum().reset_index().rename(columns={'保険点数': '前年'})
+
+        plot_df_doc = pd.merge(plot_df_doc, curr_doc_data, on='月', how='left')
+        plot_df_doc = pd.merge(plot_df_doc, prev_doc_data, on='月', how='left').fillna(0)
+        plot_df_doc['単価'] = plot_df_doc.apply(lambda x: round(x['当年'] / x['件数'], 1) if x['件数'] > 0 else 0, axis=1)
+        plot_df_doc['前年比'] = plot_df_doc.apply(lambda x: round((x['当年'] / x['前年']) * 100, 1) if x['前年'] > 0 else 0, axis=1)
+
+        colors_doc = ['#E74C3C' if 0 < val < 100 else ('#2E86C1' if val >= 100 else '#000000') for val in plot_df_doc['前年比']]
+
+        fig_doc = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_doc.add_trace(go.Bar(
+            x=plot_df_doc['月'], y=plot_df_doc['件数'], name="件数",
+            marker_color="#AED6F1", hovertemplate="<b>%{x}</b><br>件数: %{y:,.0f} 件<extra></extra>"
+        ), secondary_y=False)
+        fig_doc.add_trace(go.Scatter(
+            x=plot_df_doc['月'], y=plot_df_doc['当年'],
+            mode='lines+markers+text', name=f'保険点数 当年 ({selected_year_doc})',
+            line=dict(color='#2E86C1', width=4),
+            text=plot_df_doc['前年比'].apply(lambda x: f"{x}%" if x > 0 else ""),
+            textposition="top center", textfont=dict(color=colors_doc, size=13, family="Arial Black"),
+            hovertemplate="<b>%{x}</b><br>保険点数: %{y:,.0f} 点<extra></extra>"
+        ), secondary_y=True)
+        if not df_prev_doc_full.empty:
+            fig_doc.add_trace(go.Scatter(
+                x=plot_df_doc['月'], y=plot_df_doc['前年'],
+                mode='lines+markers', name=f'保険点数 前年 ({prev_year_doc})',
+                line=dict(color='#ABB2B9', width=2, dash='dot'),
+                hovertemplate="前年: %{y:,.0f} 点<extra></extra>"
+            ), secondary_y=True)
+
+        fig_doc.update_layout(
+            hovermode="x unified",
+            xaxis=dict(title="診療月", type='category', categoryorder='array', categoryarray=valid_months_doc),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        fig_doc.update_yaxes(title_text="件数 (件)", secondary_y=False)
+        fig_doc.update_yaxes(title_text="保険点数 (点)", secondary_y=True)
+        st.plotly_chart(fig_doc, use_container_width=True, config={'displayModeBar': False})
+
+        st.write(f"#### 📋 {selected_doctor} 月別詳細（件数・保険点数・単価）")
+        detail_doc = plot_df_doc[['月', '件数', '当年', '単価']].rename(columns={'当年': '保険点数'}).copy()
+        sum_row_doc = detail_doc[['件数', '保険点数']].sum()
+        sum_row_doc['月'] = '合計'
+        sum_row_doc['単価'] = round(sum_row_doc['保険点数'] / sum_row_doc['件数'], 1) if sum_row_doc['件数'] > 0 else 0
+        detail_doc = pd.concat([detail_doc, pd.DataFrame([sum_row_doc])], ignore_index=True)
+
+        def style_detail_doc(df):
+            styler = df.set_index('月').style
+            fmt = {'件数': "{:,.0f} 件", '保険点数': "{:,.0f} 点", '単価': "{:,.1f} 点"}
+            styler = styler.format(fmt)
+
+            def apply_bold_total(row):
+                if row.name == '合計':
+                    return ['font-weight: bold; background-color: #f0f2f6'] * len(row)
+                return [''] * len(row)
+
+            return styler.apply(apply_bold_total, axis=1)
+
+        st.dataframe(style_detail_doc(detail_doc), use_container_width=True)
+
+    st.write("---")
+    st.write("### 📋 月別詳細マトリクス（医師×月・保険点数）")
+
+    matrix_doc_df = df_curr_doc.pivot_table(index='医師', columns='月', values='保険点数', aggfunc='sum').fillna(0)
+    matrix_doc_cols = [m for m in valid_months_doc if m in matrix_doc_df.columns]
+    matrix_doc_df = matrix_doc_df.reindex(columns=matrix_doc_cols)
+    matrix_doc_df['年間合計'] = matrix_doc_df.sum(axis=1)
+    matrix_doc_df = matrix_doc_df.sort_values('年間合計', ascending=False)
+
+    sum_row_matrix_doc = matrix_doc_df.sum(numeric_only=True)
+    sum_row_matrix_doc.name = '★点数合計'
+    matrix_doc_df = pd.concat([matrix_doc_df, pd.DataFrame([sum_row_matrix_doc])])
+
+    def style_full_matrix_doc(df):
+        styler = df.style
+        fmt = {col: "{:,.0f}" for col in df.columns}
+        styler = styler.format(fmt)
+
+        def apply_bold_total(row):
+            if row.name == '★点数合計':
+                return ['font-weight: bold; background-color: #f0f2f6'] * len(row)
+            return [''] * len(row)
+
+        return styler.apply(apply_bold_total, axis=1)
+
+    st.dataframe(style_full_matrix_doc(matrix_doc_df), use_container_width=True)
+
+# ==========================================
+# H. AI総合経営アドバイス (トレンド反映・Bルート攻略版)
 # ==========================================
 elif analysis_mode == "AI総合経営アドバイス":
     st.subheader("🤖 AI総合経営アドバイス（目標：レセプト単価750点達成に向けて）")
