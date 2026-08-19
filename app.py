@@ -1816,7 +1816,17 @@ elif analysis_mode == "医師別診療実績（月別）":
 
         return styler.apply(apply_bold_total, axis=1)
 
-    st.dataframe(style_full_matrix_doc(matrix_doc_df), use_container_width=True)
+    if view == "mobile":
+        show_full_doc = st.session_state.get("show_full_matrix_doc", False)
+        btn_label_doc = "📅 直近6ヶ月だけ表示" if show_full_doc else "📅 全期間を表示"
+        if st.button(btn_label_doc, key="show_full_matrix_doc_btn"):
+            st.session_state["show_full_matrix_doc"] = not show_full_doc
+            st.rerun()
+        display_matrix_doc = matrix_doc_df if show_full_doc else limit_recent_months(matrix_doc_df, matrix_doc_cols, n=6)
+    else:
+        display_matrix_doc = matrix_doc_df
+
+    st.dataframe(style_full_matrix_doc(display_matrix_doc), use_container_width=True)
 
 # ==========================================
 # H. AI総合経営アドバイス (トレンド反映・Bルート攻略版)
