@@ -345,6 +345,7 @@ if view == "mobile":
         pages,
         index=pages.index(st.session_state.current_page),
         label_visibility="collapsed",
+        key="mobile_nav_select",
     )
     if selected_page != st.session_state.current_page:
         st.session_state.current_page = selected_page
