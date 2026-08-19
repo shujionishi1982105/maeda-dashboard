@@ -1,7 +1,7 @@
 {
   "name": "経営分析ダッシュボード",
   "short_name": "経営分析ダッシュボード",
-  "start_url": "/",
+  "start_url": "/?view=mobile",
   "scope": "/",
   "display": "standalone",
   "background_color": "#FFFFFF",

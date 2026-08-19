@@ -10,7 +10,7 @@ import unicodedata
 # キャッシュをリセット
 st.cache_data.clear()
 
-st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="wide")
+st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="wide", page_icon="static/apple-touch-icon.png")
 
 # ==========================================
 # 📱 PWA対応（ホーム画面への追加）
@@ -66,8 +66,8 @@ if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
-            user_id = st.text_input("ユーザーID")
-            password = st.text_input("パスワード", type="password")
+            user_id = st.text_input("ユーザーID", autocomplete="username")
+            password = st.text_input("パスワード", type="password", autocomplete="current-password")
             submit = st.form_submit_button("ログイン", use_container_width=True)
             
             if submit:
