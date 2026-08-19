@@ -38,8 +38,8 @@ def inject_pwa_head():
                 document.head.appendChild(meta);
             }
 
-            addLink('manifest', '/app/static/manifest.json');
-            addLink('apple-touch-icon', '/app/static/apple-touch-icon.png');
+            addLink('manifest', 'https://shujionishi1982105.github.io/maeda-dashboard-pwa-assets/manifest.json');
+            addLink('apple-touch-icon', 'https://shujionishi1982105.github.io/maeda-dashboard-pwa-assets/apple-touch-icon.png');
             addMeta('apple-mobile-web-app-capable', 'yes');
             addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
             addMeta('apple-mobile-web-app-title', '経営分析ダッシュボード');
