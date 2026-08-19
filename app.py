@@ -1558,8 +1558,18 @@ elif analysis_mode == "検査一覧分析":
             return [''] * len(row)
             
         return styler.apply(apply_bold_total, axis=1)
-        
-    st.dataframe(style_full_matrix(matrix_full_df), use_container_width=True)
+
+    if view == "mobile":
+        show_full_exam = st.session_state.get("show_full_matrix_exam", False)
+        btn_label_exam = "📅 直近6ヶ月だけ表示" if show_full_exam else "📅 全期間を表示"
+        if st.button(btn_label_exam, key="show_full_matrix_exam_btn"):
+            st.session_state["show_full_matrix_exam"] = not show_full_exam
+            st.rerun()
+        display_matrix_exam = matrix_full_df if show_full_exam else limit_recent_months(matrix_full_df, matrix_cols, n=6)
+    else:
+        display_matrix_exam = matrix_full_df
+
+    st.dataframe(style_full_matrix(display_matrix_exam), use_container_width=True)
 
 # ==========================================
 # G. 医師別診療実績（月別）
