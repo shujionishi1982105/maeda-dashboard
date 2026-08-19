@@ -14,13 +14,23 @@
 **含む**
 - ホーム画面への追加時に使うアイコン（192×192px・512×512px・Apple用180×180px）
 - Web App Manifest（`manifest.json`）による、アプリ名・アイコン・スタンドアロン表示設定
-- Android/Chromeの「ホーム画面に追加」導線が正しく機能するための最小限のService Worker（キャッシュ処理なし、登録のみ）
 - iOS Safari向けの`apple-touch-icon`・`apple-mobile-web-app-capable`等のメタタグ
 
 **含まない（対象外）**
-- オフラインでのデータ閲覧・キャッシュ（Service Workerはキャッシュしない）
+- Service Worker（下記「検討したが見送った項目」を参照）
+- オフラインでのデータ閲覧・キャッシュ
 - JavaScriptによる画面幅・デバイスの自動判定（[スマホ対応レイアウト設計](2026-08-19-mobile-responsive-layout-design.md)の方針を踏襲し、今回も導入しない）
 - 既存のログイン機能・データ読み込みロジックの変更
+
+## 検討したが見送った項目：Service Worker
+
+当初はAndroid/Chromeの「ホーム画面に追加」導線を強化する目的で、キャッシュ処理を行わない最小限のService Workerを追加する予定だった。しかし技術調査の結果、以下の理由で見送った。
+
+- Streamlitの静的ファイル配信（`enableStaticServing`）は`app/static/`配下にしかファイルを置けない
+- ブラウザの仕様上、Service Workerは「配信されたディレクトリ配下」しか制御できない（既定の最大スコープ）。これを広げるには`Service-Worker-Allowed`レスポンスヘッダーが必要だが、Streamlitの静的ファイル配信はレスポンスヘッダーを制御する手段を提供していない
+- そのため`app/static/sw.js`として配信しても、実際のダッシュボード本体（`/`配下）を制御できず、登録しても実質的に機能しない（無駄な登録エラーが発生する可能性もある）
+
+iOS Safariの「ホーム画面に追加」はService Workerを必要としないため影響なし。Androidも`manifest.json`の`display: standalone`設定により、基本的な「ホーム画面に追加」自体は動作する見込みだが、一部端末・Chromeバージョンでは完全な単独アプリ的挙動（URLバー非表示等）が弱まる可能性がある。この点はユーザーに説明済みで、了承を得ている。将来的にAndroidでの挙動を強化したい場合は、`sw.js`をルート直下（`/`）で配信できる別のホスティング構成（リバースプロキシ等）が必要になる。
 
 ## アイコン素材
 
@@ -49,7 +59,6 @@ enableStaticServing = true
 - `static/icon-192.png`
 - `static/icon-512.png`
 - `static/apple-touch-icon.png`
-- `static/sw.js`（Service Worker）
 
 `unsafe_allow_javascript=True`の利用に`streamlit>=1.52.0`が必要なため、`requirements.txt`の`streamlit>=1.30.0`も`streamlit>=1.52.0`に引き上げる。
 
@@ -66,30 +75,11 @@ Streamlit 1.52.0で追加された `st.html(body, unsafe_allow_javascript=True)`
 <meta name="theme-color" content="#2C3E50">
 ```
 
-加えて同じスクリプト内でService Workerを登録する：
-
-```javascript
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('app/static/sw.js');
-}
-```
-
 スクリプトの先頭で「既に注入済みなら何もしない」ガード（`document.querySelector('link[rel="manifest"]')`の存在チェック）を入れる。Streamlitはユーザー操作のたびにスクリプト全体を再実行するため、ガードがないと再実行のたびに同じタグが重複して`<head>`に追加されてしまう。
 
 この注入処理は `app.py` 内に `inject_pwa_head()` のような小さな関数としてまとめ、スクリプトの先頭付近（`st.set_page_config` の直後、ログイン画面より前）で1回呼び出す。ログイン前後どちらの画面でも同じタグが適用される。
 
 `unsafe_allow_javascript=True`はStreamlit公式のドキュメント化された機能（1.52.0〜）であり、`st.components.v1.html`のiframe越しに`window.parent`を操作する非公式のコミュニティ手法より安定性が高い。ただし本番で使うには `requirements.txt` の `streamlit>=1.30.0` を `streamlit>=1.52.0` 以上に引き上げる必要がある。
-
-### 3. 最小限のService Worker
-
-`static/sw.js` は以下のような、キャッシュを一切行わない最小構成にする：
-
-```javascript
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-```
-
-`fetch`イベントのリスナーは登録しない（＝すべての通信は素通りでネットワークに任せる）。目的はAndroid/Chromeの「ホーム画面に追加」導線を有効にすることのみで、オフラインキャッシュは行わない。
 
 ## Web App Manifest の内容
 
@@ -121,8 +111,8 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 このサンドボックス環境ではヘッドレスブラウザ（Playwright）を用意しようとしたが、依存ライブラリ不足とsudo権限がないため実機能検証はできなかった。そのため、以下の段階で検証する：
 
 1. **静的チェック**：`ast.parse`によるPython構文チェック、`json.loads`による`manifest.json`の妥当性チェック
-2. **配信確認**：`streamlit run app.py`をローカル起動し、`curl`で`app/static/manifest.json`・各アイコン・`sw.js`が200 OKで取得できることを確認
-3. **注入内容の確認**：`st.html`に渡すHTML文字列に、想定した`<link>`・`<meta>`タグと登録スクリプトが正しく含まれていることを文字列レベルで確認。また`streamlit.testing.v1.AppTest`でログイン〜各ページ遷移を通しで実行し、`inject_pwa_head()`呼び出しを含めて例外が発生しないことを確認する
+2. **配信確認**：`streamlit run app.py`をローカル起動し、`curl`で`app/static/manifest.json`・各アイコンが200 OKで取得できることを確認
+3. **注入内容の確認**：`st.html`に渡すHTML文字列に、想定した`<link>`・`<meta>`タグが正しく含まれていることを文字列レベルで確認。また`streamlit.testing.v1.AppTest`でログイン〜各ページ遷移を通しで実行し、`inject_pwa_head()`呼び出しを含めて例外が発生しないことを確認する
 4. **実機確認（人手・必須）**：GitHubへのpush・Streamlit Community Cloudへのデプロイ後、実際のスマホ（iOS Safari・Android Chromeの両方が望ましい）で「ホーム画面に追加」を行い、アイコン・アプリ名が正しく表示され、アイコンをタップした際にブラウザのURLバーなしで開く（スタンドアロン表示になる）ことを確認する
 
 自動テストで検証しきれない最終確認（実機での見え方・動作）が必須である点は、前回のスマホ対応レイアウト作業（AppTestによる自動E2E検証がほぼ完結した）と異なり、本作業固有の制約として明記しておく。
