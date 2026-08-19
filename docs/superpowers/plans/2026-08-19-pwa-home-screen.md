@@ -110,8 +110,8 @@ git commit -m "PWA用アイコン画像（192px/512px/apple-touch-icon）を追�
   "background_color": "#FFFFFF",
   "theme_color": "#2C3E50",
   "icons": [
-    { "src": "app/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "app/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/app/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
 ```

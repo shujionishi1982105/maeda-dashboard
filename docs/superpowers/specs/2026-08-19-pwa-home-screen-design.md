@@ -93,8 +93,8 @@ Streamlit 1.52.0で追加された `st.html(body, unsafe_allow_javascript=True)`
   "background_color": "#FFFFFF",
   "theme_color": "#2C3E50",
   "icons": [
-    { "src": "app/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "app/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/app/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
 ```
