@@ -1250,7 +1250,17 @@ elif analysis_mode == "診療行為一覧分析":
             
         return styler.apply(apply_bold_total, axis=1)
         
-    st.dataframe(style_full_matrix(matrix_full_df), use_container_width=True)
+    if view == "mobile":
+        show_full_act = st.session_state.get("show_full_matrix_act", False)
+        btn_label_act = "📅 直近6ヶ月だけ表示" if show_full_act else "📅 全期間を表示"
+        if st.button(btn_label_act, key="show_full_matrix_act_btn"):
+            st.session_state["show_full_matrix_act"] = not show_full_act
+            st.rerun()
+        display_matrix_act = matrix_full_df if show_full_act else limit_recent_months(matrix_full_df, matrix_cols, n=6)
+    else:
+        display_matrix_act = matrix_full_df
+
+    st.dataframe(style_full_matrix(display_matrix_act), use_container_width=True)
 
 # ==========================================
 # F. 検査一覧分析
