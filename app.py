@@ -325,16 +325,27 @@ if 'current_page' not in st.session_state:
 
 st.write("### 🔍 分析メニュー")
 
-for i in range(0, len(pages), 4):
-    cols = st.columns(4)
-    for j in range(4):
-        if i + j < len(pages):
-            page_name = pages[i + j]
-            with cols[j]:
-                btn_type = "primary" if st.session_state.current_page == page_name else "secondary"
-                if st.button(page_name, use_container_width=True, key=f"nav_btn_{i+j}", type=btn_type):
-                    st.session_state.current_page = page_name
-                    st.rerun()
+if view == "mobile":
+    selected_page = st.selectbox(
+        "分析モードを選択",
+        pages,
+        index=pages.index(st.session_state.current_page),
+        label_visibility="collapsed",
+    )
+    if selected_page != st.session_state.current_page:
+        st.session_state.current_page = selected_page
+        st.rerun()
+else:
+    for i in range(0, len(pages), 4):
+        cols = st.columns(4)
+        for j in range(4):
+            if i + j < len(pages):
+                page_name = pages[i + j]
+                with cols[j]:
+                    btn_type = "primary" if st.session_state.current_page == page_name else "secondary"
+                    if st.button(page_name, use_container_width=True, key=f"nav_btn_{i+j}", type=btn_type):
+                        st.session_state.current_page = page_name
+                        st.rerun()
 
 st.write("---")
 
