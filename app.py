@@ -151,6 +151,20 @@ st.markdown("""
         padding: 15px;
         min-height: 220px;
     }
+
+    /* === スマホ幅（768px以下）での見やすさ調整 === */
+    @media (max-width: 768px) {
+        .header-title {
+            font-size: 1.3rem !important;
+        }
+        div.stButton > button {
+            font-size: 13px !important;
+            height: 55px !important;
+        }
+        .stDataFrame, .stTable {
+            font-size: 12px !important;
+        }
+    }
     </style>
     """, unsafe_allow_html=True)
 
