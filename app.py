@@ -10,7 +10,7 @@ import unicodedata
 # キャッシュをリセット
 st.cache_data.clear()
 
-st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="wide", page_icon="static/apple-touch-icon.png")
+st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="wide")
 
 # ==========================================
 # 🔒 ログイン機能の設定
