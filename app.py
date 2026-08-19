@@ -290,6 +290,23 @@ with header_cols[2]:
         st.rerun()
 
 # ==========================================
+# 表示モード切替（PC／スマホ）
+# ==========================================
+view = st.query_params.get("view", "pc")
+view_choice = st.radio(
+    "表示モード",
+    ["🖥 PC表示", "📱 スマホ表示"],
+    index=0 if view == "pc" else 1,
+    horizontal=True,
+    key="view_mode_radio",
+    label_visibility="collapsed",
+)
+new_view = "pc" if view_choice == "🖥 PC表示" else "mobile"
+if new_view != view:
+    st.query_params["view"] = new_view
+    st.rerun()
+
+# ==========================================
 # ナビゲーションメニュー
 # ==========================================
 pages = [
