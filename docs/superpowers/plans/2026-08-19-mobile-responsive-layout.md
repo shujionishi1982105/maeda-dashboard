@@ -219,7 +219,6 @@ if view == "mobile":
     )
     if selected_page != st.session_state.current_page:
         st.session_state.current_page = selected_page
-        st.rerun()
 else:
     for i in range(0, len(pages), 4):
         cols = st.columns(4)
@@ -232,6 +231,8 @@ else:
                         st.session_state.current_page = page_name
                         st.rerun()
 ```
+
+（コードレビューで指摘・修正：`st.selectbox`はユーザー操作時にStreamlitが自動的に1回再実行するため、`st.session_state.current_page`の更新は次の`analysis_mode = st.session_state.current_page`行より前に反映される。ボタン版と違い見た目の状態（primary/secondary色）を明示的に更新する必要がないため、`st.rerun()`は不要かつ二重再実行による遅延の原因になる。）
 
 - [ ] **Step 3: シンタックスチェック**
 
