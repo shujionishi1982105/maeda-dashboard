@@ -252,6 +252,12 @@ def get_act_summary_for_ai(y_str, m_str):
                         continue
     return pd.DataFrame()
 
+def limit_recent_months(df, month_cols, n=6):
+    """month_cols（時系列順の月名リスト）のうち直近n件だけ残した列構成のdfを返す。年間合計など月以外の列はそのまま残す。"""
+    recent_months = month_cols[-n:] if len(month_cols) > n else list(month_cols)
+    other_cols = [c for c in df.columns if c not in month_cols]
+    return df[recent_months + other_cols]
+
 # ==========================================
 # タイトル＆ロゴ表示 
 # ==========================================
