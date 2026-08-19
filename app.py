@@ -334,7 +334,6 @@ if view == "mobile":
     )
     if selected_page != st.session_state.current_page:
         st.session_state.current_page = selected_page
-        st.rerun()
 else:
     for i in range(0, len(pages), 4):
         cols = st.columns(4)
