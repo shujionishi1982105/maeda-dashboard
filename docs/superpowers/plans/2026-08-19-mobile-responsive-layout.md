@@ -216,6 +216,7 @@ if view == "mobile":
         pages,
         index=pages.index(st.session_state.current_page),
         label_visibility="collapsed",
+        key="mobile_nav_select",
     )
     if selected_page != st.session_state.current_page:
         st.session_state.current_page = selected_page
@@ -233,6 +234,8 @@ else:
 ```
 
 （コードレビューで指摘・修正：`st.selectbox`はユーザー操作時にStreamlitが自動的に1回再実行するため、`st.session_state.current_page`の更新は次の`analysis_mode = st.session_state.current_page`行より前に反映される。ボタン版と違い見た目の状態（primary/secondary色）を明示的に更新する必要がないため、`st.rerun()`は不要かつ二重再実行による遅延の原因になる。）
+
+（Task 8の総合確認（AppTestによる自動E2E検証）で発見・修正：`key`を指定しないと、`index=`引数が`st.session_state.current_page`から毎回再計算されるためウィジェットの自動生成IDが実行ごとに変わり、8ページを順番に選択すると2回に1回（1,3,5,7回目は成功、2,4,6回目は失敗）選択が反映されないバグが実際に発生した。`key="mobile_nav_select"`で固定IDにすることで解消し、8/8成功を確認済み。）
 
 - [ ] **Step 3: シンタックスチェック**
 
