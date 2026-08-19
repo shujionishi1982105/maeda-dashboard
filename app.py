@@ -13,46 +13,6 @@ st.cache_data.clear()
 st.set_page_config(page_title="まえだ耳鼻咽喉科 経営分析", layout="wide", page_icon="static/apple-touch-icon.png")
 
 # ==========================================
-# 📱 PWA対応（ホーム画面への追加）
-# ==========================================
-def inject_pwa_head():
-    st.html(
-        """
-        <script>
-        (function() {
-            if (document.querySelector('link[rel="manifest"]')) {
-                return;
-            }
-
-            function addLink(rel, href) {
-                var link = document.createElement('link');
-                link.rel = rel;
-                link.href = href;
-                document.head.appendChild(link);
-            }
-
-            function addMeta(name, content) {
-                var meta = document.createElement('meta');
-                meta.name = name;
-                meta.content = content;
-                document.head.appendChild(meta);
-            }
-
-            addLink('manifest', 'https://shujionishi1982105.github.io/maeda-dashboard-pwa-assets/manifest.json');
-            addLink('apple-touch-icon', 'https://shujionishi1982105.github.io/maeda-dashboard-pwa-assets/apple-touch-icon.png');
-            addMeta('apple-mobile-web-app-capable', 'yes');
-            addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-            addMeta('apple-mobile-web-app-title', '経営分析ダッシュボード');
-            addMeta('theme-color', '#2C3E50');
-        })();
-        </script>
-        """,
-        unsafe_allow_javascript=True,
-    )
-
-inject_pwa_head()
-
-# ==========================================
 # 🔒 ログイン機能の設定
 # ==========================================
 USER_ID = "admin"
