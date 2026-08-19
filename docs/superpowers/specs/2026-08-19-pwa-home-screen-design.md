@@ -51,9 +51,11 @@ enableStaticServing = true
 - `static/apple-touch-icon.png`
 - `static/sw.js`（Service Worker）
 
-### 2. `<head>`へのタグ注入（JavaScriptインジェクション）
+`unsafe_allow_javascript=True`の利用に`streamlit>=1.52.0`が必要なため、`requirements.txt`の`streamlit>=1.30.0`も`streamlit>=1.52.0`に引き上げる。
 
-Streamlitは`st.markdown`で`<head>`タグを直接操作できないため、`st.components.v1.html`でJavaScriptを埋め込み、`window.parent.document.head`に対して以下のタグを注入する：
+### 2. `<head>`へのタグ注入（`st.html`の公式JavaScript実行機能を使用）
+
+Streamlit 1.52.0で追加された `st.html(body, unsafe_allow_javascript=True)` を使う。この関数は`st.components.v1.html`と異なりiframeを使わず、内容をページの実際のDOMに直接描画するため、埋め込んだ`<script>`は`window.parent`を経由せず`document`に直接アクセスできる（Streamlit公式ドキュメント・インストール済みパッケージのdocstringで確認済み：「``st.html`` content is **not** iframed... To execute JavaScript contained in your HTML, set ``unsafe_allow_javascript=True``」）。これにより以下のタグを`document.head`に注入する：
 
 ```html
 <link rel="manifest" href="app/static/manifest.json">
@@ -72,9 +74,11 @@ if ('serviceWorker' in navigator) {
 }
 ```
 
+スクリプトの先頭で「既に注入済みなら何もしない」ガード（`document.querySelector('link[rel="manifest"]')`の存在チェック）を入れる。Streamlitはユーザー操作のたびにスクリプト全体を再実行するため、ガードがないと再実行のたびに同じタグが重複して`<head>`に追加されてしまう。
+
 この注入処理は `app.py` 内に `inject_pwa_head()` のような小さな関数としてまとめ、スクリプトの先頭付近（`st.set_page_config` の直後、ログイン画面より前）で1回呼び出す。ログイン前後どちらの画面でも同じタグが適用される。
 
-`st.components.v1.html`はiframe内でHTMLを描画する公式APIだが、`window.parent.document`への操作自体はStreamlit非公式のコミュニティ手法である。同一オリジンのiframeとして描画されるため通常は問題なく動作するが、将来のブラウザ仕様変更やStreamlitのセキュリティ強化により動作しなくなる可能性はゼロではない。
+`unsafe_allow_javascript=True`はStreamlit公式のドキュメント化された機能（1.52.0〜）であり、`st.components.v1.html`のiframe越しに`window.parent`を操作する非公式のコミュニティ手法より安定性が高い。ただし本番で使うには `requirements.txt` の `streamlit>=1.30.0` を `streamlit>=1.52.0` 以上に引き上げる必要がある。
 
 ### 3. 最小限のService Worker
 
@@ -118,7 +122,7 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 
 1. **静的チェック**：`ast.parse`によるPython構文チェック、`json.loads`による`manifest.json`の妥当性チェック
 2. **配信確認**：`streamlit run app.py`をローカル起動し、`curl`で`app/static/manifest.json`・各アイコン・`sw.js`が200 OKで取得できることを確認
-3. **注入内容の確認**：`st.components.v1.html`に渡すHTML文字列に、想定した`<link>`・`<meta>`タグと登録スクリプトが正しく含まれていることを文字列レベルで確認
+3. **注入内容の確認**：`st.html`に渡すHTML文字列に、想定した`<link>`・`<meta>`タグと登録スクリプトが正しく含まれていることを文字列レベルで確認。また`streamlit.testing.v1.AppTest`でログイン〜各ページ遷移を通しで実行し、`inject_pwa_head()`呼び出しを含めて例外が発生しないことを確認する
 4. **実機確認（人手・必須）**：GitHubへのpush・Streamlit Community Cloudへのデプロイ後、実際のスマホ（iOS Safari・Android Chromeの両方が望ましい）で「ホーム画面に追加」を行い、アイコン・アプリ名が正しく表示され、アイコンをタップした際にブラウザのURLバーなしで開く（スタンドアロン表示になる）ことを確認する
 
 自動テストで検証しきれない最終確認（実機での見え方・動作）が必須である点は、前回のスマホ対応レイアウト作業（AppTestによる自動E2E検証がほぼ完結した）と異なり、本作業固有の制約として明記しておく。
